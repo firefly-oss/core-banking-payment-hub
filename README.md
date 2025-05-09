@@ -72,63 +72,58 @@ The Payment Hub implements the hexagonal architecture (also known as ports and a
 This architecture allows the core business logic to remain isolated from external concerns, making the system more maintainable, testable, and adaptable to changing requirements.
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                                                                             │
-│  ┌─────────────────────────────────────────────────────────────┐            │
-│  │                        Core Domain                          │            │
-│  │                                                             │            │
-│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐ │            │
-│  │  │                 │  │                 │  │             │ │            │
-│  │  │ Service Layer   │  │  Domain Models  │  │   DTOs      │ │            │
-│  │  │                 │  │                 │  │             │ │            │
-│  │  └─────────────────┘  └─────────────────┘  └─────────────┘ │            │
-│  │                                                             │            │
-│  └───────────────────────────┬─────────────────────────────────┘            │
-│                              │                                              │
-│  ┌───────────────────────────▼─────────────────────────────────┐            │
-│  │                           Ports                             │            │
-│  │                                                             │            │
-│  │  ┌─────────────────────────────────────────────────────┐    │            │
-│  │  │                Provider Interfaces                  │    │            │
-│  │  │                                                     │    │            │
-│  │  │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐   │    │            │
-│  │  │  │  SEPA   │ │  SWIFT  │ │   ACH   │ │   UK    │   │    │            │
-│  │  │  └─────────┘ └─────────┘ └─────────┘ └─────────┘   │    │            │
-│  │  │                                                     │    │            │
-│  │  │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐   │    │            │
-│  │  │  │ TARGET2 │ │  TIPS   │ │EBA STEP2│ │Internal │   │    │            │
-│  │  │  └─────────┘ └─────────┘ └─────────┘ └─────────┘   │    │            │
-│  │  │                                                     │    │            │
-│  │  └─────────────────────────────────────────────────────┘    │            │
-│  │                                                             │            │
-│  └───────────────────────────┬─────────────────────────────────┘            │
-│                              │                                              │
-│  ┌───────────────────────────▼─────────────────────────────────┐            │
-│  │                         Adapters                            │            │
-│  │                                                             │            │
-│  │  ┌─────────────────────────┐    ┌─────────────────────────┐ │            │
-│  │  │   Provider Implementations│    │    REST Controllers     │ │            │
-│  │  │                         │    │                         │ │            │
-│  │  │  ┌─────────┐ ┌─────────┐│    │  ┌─────────┐ ┌─────────┐ │ │            │
-│  │  │  │ Default │ │ Default ││    │  │  SEPA   │ │  SWIFT  │ │ │            │
-│  │  │  │  SEPA   │ │  SWIFT  ││    │  │Controller│ │Controller│ │ │            │
-│  │  │  └─────────┘ └─────────┘│    │  └─────────┘ └─────────┘ │ │            │
-│  │  │                         │    │                         │ │            │
-│  │  │  ┌─────────┐ ┌─────────┐│    │  ┌─────────┐ ┌─────────┐ │ │            │
-│  │  │  │ Default │ │ Default ││    │  │   ACH   │ │European │ │ │            │
-│  │  │  │   ACH   │ │   UK    ││    │  │Controller│ │Controller│ │ │            │
-│  │  │  └─────────┘ └─────────┘│    │  └─────────┘ └─────────┘ │ │            │
-│  │  │                         │    │                         │ │            │
-│  │  │  ┌─────────┐ ┌─────────┐│    │  ┌─────────┐ ┌─────────┐ │ │            │
-│  │  │  │ Default │ │ Default ││    │  │   UK    │ │Internal │ │ │            │
-│  │  │  │ TARGET2 │ │  TIPS   ││    │  │Controller│ │Controller│ │ │            │
-│  │  │  └─────────┘ └─────────┘│    │  └─────────┘ └─────────┘ │ │            │
-│  │  │                         │    │                         │ │            │
-│  │  └─────────────────────────┘    └─────────────────────────┘ │            │
-│  │                                                             │            │
-│  └─────────────────────────────────────────────────────────────┘            │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────┐
+│                         HEXAGONAL ARCHITECTURE                             │
+│                                                                            │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │                              Core Domain                             │  │
+│  │                                                                      │  │
+│  │  ┌────────────────────┐ ┌────────────────────┐ ┌──────────────────┐  │  │
+│  │  │   Service Layer    │ │   Domain Models    │ │       DTOs       │  │  │
+│  │  └────────────────────┘ └────────────────────┘ └──────────────────┘  │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                              │                                             │
+│                              ▼                                             │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │                                Ports                                 │  │
+│  │                                                                      │  │
+│  │  ┌────────────────────────────────────────────────────────────────┐  │  │
+│  │  │                     Provider Interfaces                        │  │  │
+│  │  │                                                                │  │  │
+│  │  │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐               │  │  │
+│  │  │  │  SEPA   │ │  SWIFT  │ │   ACH   │ │   UK    │               │  │  │
+│  │  │  └─────────┘ └─────────┘ └─────────┘ └─────────┘               │  │  │
+│  │  │  ┌─────────┐ ┌─────────┐ ┌──────────┐ ┌──────────┐             │  │  │
+│  │  │  │TARGET2  │ │  TIPS   │ │EBA STEP2 │ │ Internal │             │  │  │
+│  │  │  └─────────┘ └─────────┘ └──────────┘ └──────────┘             │  │  │
+│  │  └────────────────────────────────────────────────────────────────┘  │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                              │                                             │
+│                              ▼                                             │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │                             Adapters                                 │  │
+│  │                                                                      │  │
+│  │  ┌──────────────────────────────┐ ┌──────────────────────────────┐   │  │
+│  │  │ Provider Implementations     │ │       REST Controllers       │   │  │
+│  │  │                              │ │                              │   │  │
+│  │  │  ┌─────────┐ ┌─────────┐     │ │  ┌────────────┐ ┌──────────┐ │   │  │
+│  │  │  │ Default │ │ Default │     │ │  │   SEPA     │ │  SWIFT   │ │   │  │
+│  │  │  │  SEPA   │ │  SWIFT  │     │ │  │ Controller │ │Controller│ │   │  │
+│  │  │  └─────────┘ └─────────┘     │ │  └────────────┘ └──────────┘ │   │  │
+│  │  │  ┌─────────┐ ┌─────────┐     │ │  ┌────────────┐ ┌──────────┐ │   │  │
+│  │  │  │ Default │ │ Default │     │ │  │   ACH      │ │ European │ │   │  │
+│  │  │  │   ACH   │ │   UK    │     │ │  │ Controller │ │Controller│ │   │  │
+│  │  │  └─────────┘ └─────────┘     │ │  └────────────┘ └──────────┘ │   │  │
+│  │  │  ┌─────────┐ ┌─────────┐     │ │  ┌────────────┐ ┌──────────┐ │   │  │
+│  │  │  │ Default │ │ Default │     │ │  │    UK      │ │ Internal │ │   │  │
+│  │  │  │ TARGET2 │ │  TIPS   │     │ │  │ Controller │ │Controller│ │   │  │
+│  │  │  └─────────┘ └─────────┘     │ │  └────────────┘ └──────────┘ │   │  │
+│  │  └──────────────────────────────┘ └──────────────────────────────┘   │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+
 ```
 
 ### Module Structure
@@ -156,15 +151,27 @@ This modular structure ensures a clean separation of concerns and allows for ind
 
 #### Service Layer
 
-The service layer defines the core business operations for each payment type:
+The service layer defines the core business operations for each payment type. Each service follows a consistent pattern with methods for:
+
+- **simulate** - Validates payment data and triggers SCA if needed
+- **executePayment** - Processes the actual payment with SCA verification
+- **simulateCancellation** - Validates cancellation feasibility and triggers SCA if needed
+- **cancelPayment** - Processes the actual cancellation with SCA verification
+- **schedulePayment** - Schedules a payment for future execution
+
+The Payment Hub includes the following service interfaces:
 
 - `PaymentService<T, C, S>` - Generic interface for common payment operations
 - `SepaPaymentService` - SEPA-specific payment operations
 - `SwiftPaymentService` - SWIFT-specific payment operations
-- `AchPaymentService` - ACH-specific payment operations
+- `AchPaymentService` - ACH-specific payment operations with ABA routing support
+- `UkPaymentService` - UK-specific payment operations
+- `Target2PaymentService` - TARGET2-specific payment operations
+- `TipsPaymentService` - TIPS-specific payment operations
+- `EbaStep2PaymentService` - EBA STEP2-specific payment operations
 - `InternalTransferService` - Internal transfer operations
 
-Each service provides methods for simulating, executing, cancelling, and scheduling payments.
+Each service implementation handles the business logic for its specific payment type, including validation, routing, fee calculation, and integration with external payment networks.
 
 #### Provider Interfaces
 
@@ -183,26 +190,55 @@ These interfaces allow the system to interact with different payment providers i
 
 #### DTOs (Data Transfer Objects)
 
-DTOs are used to transfer data between the different layers of the application:
+DTOs are used to transfer data between the different layers of the application. The Payment Hub includes several categories of DTOs:
 
-- Request DTOs (e.g., `SepaPaymentRequestDTO`, `SwiftPaymentRequestDTO`)
-- Result DTOs (e.g., `PaymentExecutionResultDTO`, `PaymentSimulationResultDTO`)
-- Authentication DTOs (e.g., `ScaDTO`, `ScaResultDTO`) for Strong Customer Authentication
+- **Request DTOs**:
+  - Payment Request DTOs (e.g., `SepaPaymentRequestDTO`, `SwiftPaymentRequestDTO`)
+  - Cancellation Request DTOs (e.g., `SepaCancellationRequestDTO`, `SwiftCancellationRequestDTO`)
+  - Schedule Request DTOs (e.g., `PaymentScheduleRequestDTO`)
 
-All DTOs use Lombok annotations (`@Data`, `@Builder`, etc.) for clean, concise code.
+- **Result DTOs**:
+  - `PaymentSimulationResultDTO` - Results of payment or cancellation simulation
+  - `PaymentExecutionResultDTO` - Results of payment execution
+  - `PaymentCancellationResultDTO` - Results of payment cancellation
+  - `PaymentScheduleResultDTO` - Results of payment scheduling
+
+- **Authentication DTOs**:
+  - `ScaDTO` - Strong Customer Authentication information
+  - `ScaResultDTO` - Results of SCA verification
+
+- **Common DTOs**:
+  - Account DTOs (e.g., `IbanAccountDTO`, `UkAccountDTO`, `AbaAccountDTO`)
+  - Party DTOs (e.g., `PartyDTO`, `FinancialInstitutionDTO`)
+  - Reference DTOs (e.g., `PaymentReferenceDTO`)
+
+All DTOs use Lombok annotations (`@Data`, `@Builder`, etc.) for clean, concise code and include comprehensive validation annotations and Swagger documentation.
 
 #### Controllers
 
-REST controllers expose the payment operations as HTTP endpoints:
+REST controllers expose the payment operations as HTTP endpoints. Each controller provides a comprehensive set of operations:
 
-- `SepaPaymentController` - Endpoints for SEPA payments
-- `SwiftPaymentController` - Endpoints for SWIFT payments
-- `AchPaymentController` - Endpoints for ACH payments (with ABA routing support)
+- **Simulation** (`/simulate`) - Validates the payment without execution and triggers SCA if needed
+- **Execution** (`/execute`) - Processes the actual payment with SCA verification
+- **Cancellation Simulation** (`/cancel/simulate`) - Validates cancellation feasibility and triggers SCA if needed
+- **Cancellation** (`/cancel`) - Processes the actual cancellation with SCA verification
+- **Scheduling** (`/schedule`) - Schedules a payment for future execution
+
+The Payment Hub includes the following controllers:
+
+- `SepaPaymentController` - Endpoints for SEPA payments (SCT, SCT Inst, SDD)
+- `SwiftPaymentController` - Endpoints for SWIFT payments (MT103, MT202, PACS.008)
+- `AchPaymentController` - Endpoints for ACH payments with ABA routing support
 - `UkPaymentController` - Endpoints for UK payments (FPS, BACS, CHAPS)
 - `EuropeanPaymentController` - Endpoints for European payments (TARGET2, TIPS, EBA STEP2)
 - `InternalTransferController` - Endpoints for internal transfers
 
-Each controller is annotated with OpenAPI/Swagger annotations for comprehensive API documentation.
+Each controller is annotated with comprehensive OpenAPI/Swagger annotations that provide detailed information about:
+- The payment type and its characteristics
+- The specific process steps for each operation
+- Required and optional fields
+- Expected responses and error conditions
+- SCA requirements and handling
 
 ### Provider Registry
 
@@ -355,10 +391,12 @@ The Payment Hub's SCA implementation includes:
 Example SCA information in a payment request:
 
 ```json
-"sca": {
-  "method": "SMS",
-  "recipient": "+34600000000",
-  "authenticationCode": "123456"
+{
+  "sca": {
+    "method": "SMS",
+    "recipient": "+34600000000",
+    "authenticationCode": "123456"
+  }
 }
 ```
 
@@ -518,6 +556,12 @@ The simulate operation serves three key purposes:
 2. It triggers SCA (Strong Customer Authentication) delivery when required
 3. It returns a simulation reference that should be used in subsequent execute, schedule, or cancel operations
 
+Similarly, the cancellation simulation operation:
+1. Validates if the payment can be cancelled
+2. Provides information about cancellation fees and implications
+3. Triggers SCA delivery when required for high-value payment cancellations
+4. Returns a simulation reference that should be used in the actual cancellation request
+
 ```bash
 # SWIFT payment simulation example
 curl -X POST http://localhost:8080/api/v1/payments/swift/simulate \
@@ -631,90 +675,36 @@ curl -X POST http://localhost:8080/api/v1/payments/swift/schedule \
 
 ### Cancelling Payments
 
-To cancel a previously executed or scheduled payment, use the `/cancel` endpoint. High-value payment cancellations may require SCA:
+The Payment Hub implements a two-step process for cancelling payments:
+
+1. **Simulation Step**: First, simulate the cancellation to check if it's possible and to trigger SCA if required
+2. **Cancellation Step**: Then, perform the actual cancellation with the SCA code and simulation reference
+
+This approach ensures that users are informed about the feasibility of cancellation before proceeding, and provides proper authentication for sensitive operations.
+
+#### Cancellation Simulation
+
+The cancellation simulation process:
+- Validates the cancellation request
+- Checks if the payment exists and is in a cancellable state
+- Determines if Strong Customer Authentication (SCA) is required
+- Delivers SCA code if required (via SMS or other configured channel)
+- Returns information about cancellation feasibility, fees, and SCA requirements
 
 ```bash
-# ACH payment example with ABA routing
-curl -X POST http://localhost:8080/api/v1/payments/ach/execute \
+# SEPA payment cancellation simulation example
+curl -X POST http://localhost:8080/api/v1/payments/sepa/cancel/simulate \
   -H "Content-Type: application/json" \
   -d '{
-    "requestId": "REQ-12348",
-    "paymentType": "ACH_CREDIT",
-    "amount": 500.00,
-    "currency": "USD",
-    "originator": {
-      "name": "John Doe",
-      "address": "123 Main St, New York, NY",
-      "countryCode": "US"
-    },
-    "originatorAccount": {
-      "accountNumber": "12345678",
-      "accountType": "CHECKING"
-    },
-    "receiver": {
-      "name": "Jane Smith",
-      "address": "456 Oak St, Los Angeles, CA",
-      "countryCode": "US"
-    },
-    "receiverAccount": {
-      "accountNumber": "87654321",
-      "accountType": "SAVINGS"
-    },
-    "receivingBankRoutingNumber": "021000021",
-    "remittanceInformation": "Invoice payment #54321",
-    "secCode": "PPD"
+    "paymentId": "PAY-12345678",
+    "paymentType": "SEPA_SCT",
+    "cancellationReason": "Customer request",
+    "additionalInformation": "Payment no longer needed"
   }'
 ```
 
 ```bash
-# UK Faster Payment example
-curl -X POST http://localhost:8080/api/v1/payments/uk/fps/execute \
-  -H "Content-Type: application/json" \
-  -d '{
-    "requestId": "REQ-12349",
-    "amount": 200.00,
-    "currency": "GBP",
-    "debtorName": "John Doe",
-    "debtorAccount": {
-      "sortCode": "123456",
-      "accountNumber": "12345678"
-    },
-    "creditorName": "Jane Smith",
-    "creditorAccount": {
-      "sortCode": "654321",
-      "accountNumber": "87654321"
-    },
-    "reference": "Invoice #67890",
-    "paymentScheme": "FPS"
-  }'
-```
-
-```bash
-# TARGET2 payment example
-curl -X POST http://localhost:8080/api/v1/payments/european/target2/execute \
-  -H "Content-Type: application/json" \
-  -d '{
-    "requestId": "REQ-12350",
-    "amount": 10000.00,
-    "currency": "EUR",
-    "debtorName": "Deutsche Bank AG",
-    "debtorAccount": {
-      "iban": "DE89370400440532013000",
-      "bic": "DEUTDEFF"
-    },
-    "creditorName": "BNP Paribas",
-    "creditorAccount": {
-      "iban": "FR7630006000011234567890189",
-      "bic": "BNPAFRPP"
-    },
-    "endToEndId": "E2E-12345",
-    "remittanceInformation": "Financial institution transfer",
-    "settlementPriority": "HIGH"
-  }'
-```
-
-```bash
-# 1. First, simulate the cancellation to trigger SCA delivery if required
+# SWIFT payment cancellation simulation example
 curl -X POST http://localhost:8080/api/v1/payments/swift/cancel/simulate \
   -H "Content-Type: application/json" \
   -d '{
@@ -723,8 +713,46 @@ curl -X POST http://localhost:8080/api/v1/payments/swift/cancel/simulate \
     "cancellationReason": "Customer request",
     "additionalInformation": "Payment no longer needed"
   }'
+```
 
-# 2. Then cancel the payment with the SCA code and simulation reference
+```bash
+# Internal transfer cancellation simulation example
+curl -X POST http://localhost:8080/api/v1/payments/internal/cancel/simulate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "paymentId": "INT-12345678",
+    "paymentType": "INTERNAL_TRANSFER",
+    "sourceAccountId": "ACC-12345678",
+    "destinationAccountId": "ACC-87654321",
+    "cancellationReason": "Customer request",
+    "additionalInformation": "Transfer no longer needed"
+  }'
+```
+
+#### Actual Cancellation
+
+After simulation, proceed with the actual cancellation using the simulation reference and SCA information:
+
+```bash
+# SEPA payment cancellation example
+curl -X POST http://localhost:8080/api/v1/payments/sepa/cancel \
+  -H "Content-Type: application/json" \
+  -d '{
+    "paymentId": "PAY-12345678",
+    "paymentType": "SEPA_SCT",
+    "cancellationReason": "Customer request",
+    "additionalInformation": "Payment no longer needed",
+    "simulationReference": "SIM-12345678",
+    "sca": {
+      "method": "SMS",
+      "recipient": "+34600000000",
+      "authenticationCode": "123456"
+    }
+  }'
+```
+
+```bash
+# SWIFT payment cancellation example
 curl -X POST http://localhost:8080/api/v1/payments/swift/cancel \
   -H "Content-Type: application/json" \
   -d '{
@@ -740,6 +768,33 @@ curl -X POST http://localhost:8080/api/v1/payments/swift/cancel \
     }
   }'
 ```
+
+```bash
+# Internal transfer cancellation example
+curl -X POST http://localhost:8080/api/v1/payments/internal/cancel \
+  -H "Content-Type: application/json" \
+  -d '{
+    "paymentId": "INT-12345678",
+    "paymentType": "INTERNAL_TRANSFER",
+    "sourceAccountId": "ACC-12345678",
+    "destinationAccountId": "ACC-87654321",
+    "cancellationReason": "Customer request",
+    "additionalInformation": "Transfer no longer needed",
+    "simulationReference": "SIM-12345678",
+    "sca": {
+      "method": "SMS",
+      "recipient": "+34600000000",
+      "authenticationCode": "123456"
+    }
+  }'
+```
+
+Note that cancellation capabilities vary by payment type:
+- **SEPA Instant Credit Transfers**: Very short cancellation window due to real-time settlement
+- **SWIFT payments**: Difficult to cancel once they've entered the correspondent banking network
+- **ACH payments**: Can typically be cancelled before the settlement date
+- **UK Faster Payments**: Very short cancellation window due to near real-time settlement
+- **Internal transfers**: Usually cancellable if not yet fully processed
 
 ## Extending the Payment Hub
 
