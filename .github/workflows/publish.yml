@@ -1,0 +1,26 @@
+name: Publish Pipeline
+
+on:
+  push:
+    branches: ["main", "develop"]
+
+jobs:
+  build-jar:
+    uses: firefly-oss/cicd/.github/workflows/build-maven.yaml@main
+    with:
+      java-version: "21"
+      skip-tests: false
+      jar-path: "core-banking-payment-hub-web/target/core-banking-payment-hub.jar"
+    secrets:
+      PAT_GITHUB_PACKAGE: ${{ secrets.PAT_GITHUB_PACKAGE }}
+  docker-publish:
+    needs: [build-jar]
+    uses: firefly-oss/cicd/.github/workflows/docker-publish.yaml@main
+    with:
+      dockerfile-path: "./Dockerfile"
+      azure-registry-name: "catalis.azurecr.io"
+      azure-registry-repository: "core-banking-payment-hub"
+      docker-image-tag: "latest"
+    secrets:
+      AZURE_ACR_USERNAME: ${{ secrets.AZURE_ACR_USERNAME }}
+      AZURE_ACR_PASSWORD: ${{ secrets.AZURE_ACR_PASSWORD }}
