@@ -56,18 +56,7 @@ public class TipsPaymentServiceImpl implements TipsPaymentService {
                 .orElseGet(() -> Mono.error(new IllegalStateException("No TIPS payment provider available")));
     }
 
-    @Override
-    @Deprecated
-    public Mono<PaymentCancellationResultDTO> cancelPayment(String paymentId, String reason) {
-        log.debug("Cancelling TIPS payment (deprecated method): {}, reason: {}", paymentId, reason);
 
-        // Create a cancellation request and delegate to the new method
-        TipsCancellationRequestDTO request = new TipsCancellationRequestDTO();
-        request.setPaymentId(paymentId);
-        request.setCancellationReason(reason);
-
-        return cancelPayment(request);
-    }
 
     @Override
     public Mono<PaymentCancellationResultDTO> cancelPayment(TipsCancellationRequestDTO request) {

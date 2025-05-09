@@ -56,15 +56,7 @@ public class Target2PaymentServiceImpl implements Target2PaymentService {
                 .orElseGet(() -> Mono.error(new IllegalStateException("No TARGET2 payment provider available")));
     }
 
-    @Override
-    public Mono<PaymentCancellationResultDTO> cancelPayment(String paymentId, String reason) {
-        log.debug("Cancelling TARGET2 payment: {}, reason: {}", paymentId, reason);
-        return getProvider()
-                .map(provider -> provider.cancel(paymentId, reason)
-                    .doOnSuccess(result -> log.info("TARGET2 payment cancellation completed: {}", result))
-                    .doOnError(error -> log.error("Error cancelling TARGET2 payment", error)))
-                .orElseGet(() -> Mono.error(new IllegalStateException("No TARGET2 payment provider available")));
-    }
+
 
     @Override
     public Mono<PaymentCancellationResultDTO> cancelPayment(Target2CancellationRequestDTO request) {

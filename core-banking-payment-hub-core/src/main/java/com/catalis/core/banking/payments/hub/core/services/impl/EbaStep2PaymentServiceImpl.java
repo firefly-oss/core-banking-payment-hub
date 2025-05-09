@@ -56,18 +56,7 @@ public class EbaStep2PaymentServiceImpl implements EbaStep2PaymentService {
                 .orElseGet(() -> Mono.error(new IllegalStateException("No EBA STEP2 payment provider available")));
     }
 
-    @Override
-    @Deprecated
-    public Mono<PaymentCancellationResultDTO> cancelPayment(String paymentId, String reason) {
-        log.debug("Cancelling EBA STEP2 payment (deprecated method): {}, reason: {}", paymentId, reason);
 
-        // Create a cancellation request and delegate to the new method
-        EbaStep2CancellationRequestDTO request = new EbaStep2CancellationRequestDTO();
-        request.setPaymentId(paymentId);
-        request.setCancellationReason(reason);
-
-        return cancelPayment(request);
-    }
 
     @Override
     public Mono<PaymentCancellationResultDTO> cancelPayment(EbaStep2CancellationRequestDTO request) {

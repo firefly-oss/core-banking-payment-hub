@@ -30,16 +30,6 @@ public interface TipsPaymentProvider {
      */
     Mono<PaymentExecutionResultDTO> execute(TipsPaymentRequestDTO request);
 
-    /**
-     * Cancels an existing TIPS payment.
-     *
-     * @param paymentId The ID of the payment to cancel
-     * @param reason The reason for cancellation
-     * @return A Mono emitting the cancellation result
-     * @deprecated Use {@link #cancel(TipsCancellationRequestDTO)} instead
-     */
-    @Deprecated
-    Mono<PaymentCancellationResultDTO> cancel(String paymentId, String reason);
 
     /**
      * Cancels an existing TIPS payment using the cancellation request DTO.

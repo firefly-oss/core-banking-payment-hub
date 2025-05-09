@@ -179,19 +179,7 @@ public class DefaultTipsPaymentProvider implements TipsPaymentProvider {
         return Mono.just(result);
     }
 
-    @Override
-    @Deprecated
-    public Mono<PaymentCancellationResultDTO> cancel(String paymentId, String reason) {
-        log.info("Cancelling TIPS payment (deprecated method): {}, reason: {}", paymentId, reason);
 
-        // Create a cancellation request and delegate to the new method
-        TipsCancellationRequestDTO request = new TipsCancellationRequestDTO();
-        request.setPaymentId(paymentId);
-        request.setCancellationReason(reason);
-        request.setPaymentType(PaymentType.TIPS);
-
-        return cancel(request);
-    }
 
     @Override
     public Mono<PaymentCancellationResultDTO> cancel(TipsCancellationRequestDTO request) {

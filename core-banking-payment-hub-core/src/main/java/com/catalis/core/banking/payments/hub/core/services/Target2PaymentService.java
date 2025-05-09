@@ -29,16 +29,6 @@ public interface Target2PaymentService {
      */
     Mono<PaymentExecutionResultDTO> executePayment(Target2PaymentRequestDTO request);
 
-    /**
-     * Cancels an existing TARGET2 payment.
-     *
-     * @param paymentId The ID of the payment to cancel
-     * @param reason The reason for cancellation
-     * @return A Mono emitting the cancellation result
-     * @deprecated Use {@link #cancelPayment(Target2CancellationRequestDTO)} instead
-     */
-    @Deprecated
-    Mono<PaymentCancellationResultDTO> cancelPayment(String paymentId, String reason);
 
     /**
      * Cancels an existing TARGET2 payment using the cancellation request DTO.

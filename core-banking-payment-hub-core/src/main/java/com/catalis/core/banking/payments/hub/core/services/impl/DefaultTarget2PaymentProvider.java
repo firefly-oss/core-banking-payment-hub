@@ -163,19 +163,7 @@ public class DefaultTarget2PaymentProvider implements Target2PaymentProvider {
         return Mono.just(result);
     }
 
-    @Override
-    @Deprecated
-    public Mono<PaymentCancellationResultDTO> cancel(String paymentId, String reason) {
-        log.info("Cancelling TARGET2 payment (deprecated method): {}, reason: {}", paymentId, reason);
 
-        // Create a cancellation request and delegate to the new method
-        Target2CancellationRequestDTO request = new Target2CancellationRequestDTO();
-        request.setPaymentId(paymentId);
-        request.setCancellationReason(reason);
-        request.setPaymentType(PaymentType.TARGET2);
-
-        return cancel(request);
-    }
 
     @Override
     public Mono<PaymentCancellationResultDTO> cancel(Target2CancellationRequestDTO request) {
