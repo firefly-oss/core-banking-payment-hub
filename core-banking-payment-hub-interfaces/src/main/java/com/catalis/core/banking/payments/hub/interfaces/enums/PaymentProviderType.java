@@ -8,6 +8,10 @@ public enum PaymentProviderType {
     SEPA_PROVIDER("SEPA payment provider"),
     SWIFT_PROVIDER("SWIFT payment provider"),
     ACH_PROVIDER("ACH payment provider for US transfers"),
+    UK_PROVIDER("UK payment provider for FPS, BACS, and CHAPS"),
+    TARGET2_PROVIDER("TARGET2 payment provider"),
+    TIPS_PROVIDER("TIPS instant payment provider"),
+    EBA_STEP2_PROVIDER("EBA STEP2 payment provider"),
     INTERNAL_PROVIDER("Internal transfer provider"),
     DEFAULT_PROVIDER("Default payment provider");
 

@@ -33,6 +33,14 @@ public interface PaymentService<T, C, S> {
     Mono<PaymentExecutionResultDTO> executePayment(T request);
 
     /**
+     * Simulates cancellation of a payment to trigger SCA delivery and provide information.
+     *
+     * @param request The cancellation request to simulate
+     * @return A Mono emitting the simulation result
+     */
+    Mono<PaymentSimulationResultDTO> simulateCancellation(C request);
+
+    /**
      * Cancels an existing payment.
      *
      * @param request The cancellation request
