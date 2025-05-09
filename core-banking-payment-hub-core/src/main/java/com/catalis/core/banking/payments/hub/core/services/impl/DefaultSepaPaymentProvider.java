@@ -165,6 +165,70 @@ public class DefaultSepaPaymentProvider implements SepaPaymentProvider {
     }
 
     @Override
+    public Mono<PaymentSimulationResultDTO> simulateCancellation(SepaCancellationRequestDTO request) {
+        log.info("Simulating cancellation of SEPA payment: {}", request);
+
+        PaymentSimulationResultDTO result = new PaymentSimulationResultDTO();
+        result.setPaymentId(request.getPaymentId());
+        result.setRequestId(UUID.randomUUID().toString());
+        result.setPaymentType(request.getPaymentType());
+        result.setOperationType(PaymentOperationType.SIMULATE_CANCELLATION);
+        result.setStatus(PaymentStatus.VALIDATED);
+        result.setProvider(PaymentProviderType.SEPA_PROVIDER);
+        result.setTimestamp(LocalDateTime.now());
+        result.setSuccess(true);
+        result.setFeasible(true);
+        result.setSimulationReference("SIM-" + UUID.randomUUID().toString().substring(0, 8));
+
+        // For cancellation, we'll require SCA for high-value payments
+        boolean scaRequired = isHighValuePayment(request.getPaymentId());
+        result.setScaRequired(scaRequired);
+        result.setScaCompleted(false); // Initially not completed
+
+        if (scaRequired) {
+            // Always trigger SCA delivery during simulation if required
+            result.setScaDeliveryTriggered(true);
+            result.setScaDeliveryTimestamp(LocalDateTime.now());
+
+            // Determine SCA method and recipient
+            String scaMethod = request.getSca() != null && request.getSca().getMethod() != null ?
+                    request.getSca().getMethod() : "SMS"; // Default to SMS if not specified
+            String scaRecipient = request.getSca() != null && request.getSca().getRecipient() != null ?
+                    request.getSca().getRecipient() : maskPhoneNumber(getDefaultPhoneNumber(null));
+
+            LocalDateTime expiryTimestamp = LocalDateTime.now().plusMinutes(15); // SCA code valid for 15 minutes
+            result.setScaDeliveryMethod(scaMethod);
+            result.setScaDeliveryRecipient(scaRecipient);
+            result.setScaExpiryTimestamp(expiryTimestamp);
+
+            // Create SCA result with challenge information
+            ScaResultDTO scaResult = new ScaResultDTO();
+            scaResult.setMethod(scaMethod);
+            scaResult.setChallengeId("CHL-" + UUID.randomUUID().toString().substring(0, 8));
+            scaResult.setVerificationTimestamp(null); // Not verified yet
+            scaResult.setAttemptCount(0);
+            scaResult.setMaxAttempts(3);
+            scaResult.setExpired(false);
+            scaResult.setExpiryTimestamp(expiryTimestamp);
+            scaResult.setSuccess(false); // Not verified yet
+
+            result.setScaResult(scaResult);
+
+            // If SCA code is already provided in the request, validate it
+            if (request.getSca() != null && request.getSca().getAuthenticationCode() != null) {
+                ScaResultDTO validationResult = validateSca(request.getSca());
+                result.setScaResult(validationResult);
+                result.setScaCompleted(validationResult.isSuccess());
+            }
+
+            log.info("SCA delivery triggered for SEPA payment cancellation simulation: method={}, recipient={}, expiryTime={}",
+                    scaMethod, scaRecipient, result.getScaExpiryTimestamp());
+        }
+
+        return Mono.just(result);
+    }
+
+    @Override
     public Mono<PaymentCancellationResultDTO> cancel(SepaCancellationRequestDTO request) {
         log.info("Cancelling SEPA payment: {}", request);
 

@@ -56,6 +56,16 @@ public class SwiftPaymentServiceImpl implements SwiftPaymentService {
     }
 
     @Override
+    public Mono<PaymentSimulationResultDTO> simulateCancellation(SwiftCancellationRequestDTO request) {
+        log.debug("Simulating cancellation of SWIFT payment: {}", request);
+        return getProviderForCancellation(request)
+                .map(provider -> provider.simulateCancellation(request)
+                    .doOnSuccess(result -> log.info("SWIFT payment cancellation simulation completed: {}", result))
+                    .doOnError(error -> log.error("Error simulating cancellation of SWIFT payment", error)))
+                .orElseGet(() -> Mono.error(new IllegalStateException("No SWIFT payment provider available")));
+    }
+
+    @Override
     public Mono<PaymentCancellationResultDTO> cancelPayment(SwiftCancellationRequestDTO request) {
         log.debug("Cancelling SWIFT payment: {}", request);
         return getProviderForCancellation(request)

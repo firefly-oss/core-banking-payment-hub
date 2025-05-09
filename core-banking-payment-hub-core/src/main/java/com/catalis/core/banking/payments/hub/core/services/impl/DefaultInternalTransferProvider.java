@@ -163,18 +163,7 @@ public class DefaultInternalTransferProvider implements InternalTransferProvider
         return Mono.just(result);
     }
 
-    @Override
-    @Deprecated
-    public Mono<PaymentCancellationResultDTO> cancel(String transferId, String reason) {
-        log.info("Cancelling internal transfer (deprecated method): {}, reason: {}", transferId, reason);
 
-        // Create a cancellation request and delegate to the new method
-        InternalTransferCancellationRequestDTO request = new InternalTransferCancellationRequestDTO();
-        request.setPaymentId(transferId);
-        request.setCancellationReason(reason);
-
-        return cancel(request);
-    }
 
     @Override
     public Mono<PaymentCancellationResultDTO> cancel(InternalTransferCancellationRequestDTO request) {

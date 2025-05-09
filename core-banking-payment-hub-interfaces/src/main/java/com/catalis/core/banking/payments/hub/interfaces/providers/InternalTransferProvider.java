@@ -31,16 +31,6 @@ public interface InternalTransferProvider {
      */
     Mono<PaymentExecutionResultDTO> execute(InternalTransferRequestDTO request);
 
-    /**
-     * Cancels an existing internal transfer.
-     *
-     * @param transferId The ID of the transfer to cancel
-     * @param reason The reason for cancellation
-     * @return A Mono emitting the cancellation result
-     * @deprecated Use {@link #cancel(InternalTransferCancellationRequestDTO)} instead
-     */
-    @Deprecated
-    Mono<PaymentCancellationResultDTO> cancel(String transferId, String reason);
 
     /**
      * Cancels an existing internal transfer using the cancellation request DTO.

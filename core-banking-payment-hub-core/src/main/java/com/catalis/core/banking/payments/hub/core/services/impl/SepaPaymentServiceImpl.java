@@ -56,6 +56,16 @@ public class SepaPaymentServiceImpl implements SepaPaymentService {
     }
 
     @Override
+    public Mono<PaymentSimulationResultDTO> simulateCancellation(SepaCancellationRequestDTO request) {
+        log.debug("Simulating cancellation of SEPA payment: {}", request);
+        return getProviderForCancellation(request)
+                .map(provider -> provider.simulateCancellation(request)
+                    .doOnSuccess(result -> log.info("SEPA payment cancellation simulation completed: {}", result))
+                    .doOnError(error -> log.error("Error simulating cancellation of SEPA payment", error)))
+                .orElseGet(() -> Mono.error(new IllegalStateException("No SEPA payment provider available")));
+    }
+
+    @Override
     public Mono<PaymentCancellationResultDTO> cancelPayment(SepaCancellationRequestDTO request) {
         log.debug("Cancelling SEPA payment: {}", request);
         return getProviderForCancellation(request)

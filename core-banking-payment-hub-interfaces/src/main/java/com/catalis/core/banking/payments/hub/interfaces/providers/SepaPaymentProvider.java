@@ -33,6 +33,15 @@ public interface SepaPaymentProvider {
     Mono<PaymentExecutionResultDTO> execute(SepaPaymentRequestDTO request);
 
     /**
+     * Simulates the cancellation of a SEPA payment.
+     * This is used to trigger SCA delivery and provide information about the cancellation.
+     *
+     * @param request The cancellation request to simulate
+     * @return A Mono emitting the simulation result
+     */
+    Mono<PaymentSimulationResultDTO> simulateCancellation(SepaCancellationRequestDTO request);
+
+    /**
      * Cancels an existing SEPA payment.
      *
      * @param request The cancellation request

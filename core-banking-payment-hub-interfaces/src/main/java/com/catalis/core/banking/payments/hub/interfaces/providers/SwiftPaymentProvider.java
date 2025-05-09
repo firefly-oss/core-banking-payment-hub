@@ -33,6 +33,15 @@ public interface SwiftPaymentProvider {
     Mono<PaymentExecutionResultDTO> execute(SwiftPaymentRequestDTO request);
 
     /**
+     * Simulates the cancellation of a SWIFT payment.
+     * This is used to trigger SCA delivery and provide information about the cancellation.
+     *
+     * @param request The cancellation request to simulate
+     * @return A Mono emitting the simulation result
+     */
+    Mono<PaymentSimulationResultDTO> simulateCancellation(SwiftCancellationRequestDTO request);
+
+    /**
      * Cancels an existing SWIFT payment.
      *
      * @param request The cancellation request

@@ -55,18 +55,7 @@ public class InternalTransferServiceImpl implements InternalTransferService {
                 .orElseGet(() -> Mono.error(new IllegalStateException("No internal transfer provider available")));
     }
 
-    @Override
-    @Deprecated
-    public Mono<PaymentCancellationResultDTO> cancelTransfer(String transferId, String reason) {
-        log.debug("Cancelling internal transfer (deprecated method): {}, reason: {}", transferId, reason);
 
-        // Create a cancellation request and delegate to the new method
-        InternalTransferCancellationRequestDTO request = new InternalTransferCancellationRequestDTO();
-        request.setPaymentId(transferId);
-        request.setCancellationReason(reason);
-
-        return cancelTransfer(request);
-    }
 
     @Override
     public Mono<PaymentCancellationResultDTO> cancelTransfer(InternalTransferCancellationRequestDTO request) {
