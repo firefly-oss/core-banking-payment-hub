@@ -1,0 +1,124 @@
+spring:
+  application:
+    name: core-baking-payment-hub
+    version: 1.0.0
+    description: Core Banking Payment Hub Application
+    team:
+      name: Firefly Software Solutions Inc
+      email: dev@getfirefly.io
+  main:
+    allow-bean-definition-overriding: true
+
+
+  r2dbc:
+    pool:
+      initial-size: 5
+      max-size: 10
+      max-idle-time: 30m
+      validation-query: SELECT 1
+    url: r2dbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}?sslMode=${DB_SSL_MODE}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}?sslMode=${DB_SSL_MODE}
+    user: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+  threads:
+    virtual:
+      enabled: true
+
+server:
+  port: 8080
+  shutdown: graceful
+
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tagsSorter: alpha
+    operationsSorter: method
+    docExpansion: none
+    filter: true
+  packages-to-scan: com.catalis.core.banking.payments.hub.web.controllers
+  paths-to-match: /api/**
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  health:
+    livenessState:
+      enabled: true
+    readinessState:
+      enabled: true
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+payment:
+  providers:
+    config:
+      enabled: false
+
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+logging:
+  level:
+    root: INFO
+    com.catalis: DEBUG
+    org.springframework.r2dbc: DEBUG
+    org.flywaydb: DEBUG
+
+---
+spring:
+  config:
+    activate:
+      on-profile: testing
+
+logging:
+  level:
+    root: INFO
+    com.catalis: DEBUG
+    org.springframework.r2dbc: INFO
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+
+---
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+logging:
+  level:
+    root: WARN
+    com.catalis: INFO
+    org.springframework: WARN
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

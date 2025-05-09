@@ -1,0 +1,50 @@
+package com.catalis.core.banking.payments.hub.interfaces.providers;
+
+import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentCancellationResultDTO;
+import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentExecutionResultDTO;
+import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentScheduleResultDTO;
+import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentSimulationResultDTO;
+import com.catalis.core.banking.payments.hub.interfaces.dtos.sepa.SepaCancellationRequestDTO;
+import com.catalis.core.banking.payments.hub.interfaces.dtos.sepa.SepaPaymentRequestDTO;
+import com.catalis.core.banking.payments.hub.interfaces.dtos.sepa.SepaScheduleRequestDTO;
+import reactor.core.publisher.Mono;
+
+/**
+ * Provider interface for SEPA payment operations.
+ * Implementations of this interface will handle SEPA payment processing
+ * for different payment processors (e.g., Treezor, Iberpay).
+ */
+public interface SepaPaymentProvider {
+
+    /**
+     * Simulates a SEPA payment without actual execution.
+     *
+     * @param request The SEPA payment request to simulate
+     * @return A Mono emitting the simulation result
+     */
+    Mono<PaymentSimulationResultDTO> simulate(SepaPaymentRequestDTO request);
+
+    /**
+     * Executes a SEPA payment.
+     *
+     * @param request The SEPA payment request to execute
+     * @return A Mono emitting the execution result
+     */
+    Mono<PaymentExecutionResultDTO> execute(SepaPaymentRequestDTO request);
+
+    /**
+     * Cancels an existing SEPA payment.
+     *
+     * @param request The cancellation request
+     * @return A Mono emitting the cancellation result
+     */
+    Mono<PaymentCancellationResultDTO> cancel(SepaCancellationRequestDTO request);
+
+    /**
+     * Schedules a SEPA payment for future execution.
+     *
+     * @param request The schedule request
+     * @return A Mono emitting the scheduling result
+     */
+    Mono<PaymentScheduleResultDTO> schedule(SepaScheduleRequestDTO request);
+}
