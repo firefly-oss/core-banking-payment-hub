@@ -3,9 +3,13 @@ package com.catalis.core.banking.payments.hub.core.config;
 import com.catalis.core.banking.payments.hub.interfaces.enums.PaymentProviderType;
 import com.catalis.core.banking.payments.hub.interfaces.enums.PaymentType;
 import com.catalis.core.banking.payments.hub.interfaces.providers.AchPaymentProvider;
+import com.catalis.core.banking.payments.hub.interfaces.providers.EbaStep2PaymentProvider;
 import com.catalis.core.banking.payments.hub.interfaces.providers.InternalTransferProvider;
 import com.catalis.core.banking.payments.hub.interfaces.providers.SepaPaymentProvider;
 import com.catalis.core.banking.payments.hub.interfaces.providers.SwiftPaymentProvider;
+import com.catalis.core.banking.payments.hub.interfaces.providers.Target2PaymentProvider;
+import com.catalis.core.banking.payments.hub.interfaces.providers.TipsPaymentProvider;
+import com.catalis.core.banking.payments.hub.interfaces.providers.UkPaymentProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -66,6 +70,34 @@ public class PaymentProviderRegistry {
             log.info("Registered ACH payment provider: {}", achProviders.values().iterator().next().getClass().getName());
         }
 
+        // Discover UK providers
+        Map<String, UkPaymentProvider> ukProviders = applicationContext.getBeansOfType(UkPaymentProvider.class);
+        if (!ukProviders.isEmpty()) {
+            providerMap.put(PaymentProviderType.UK_PROVIDER, ukProviders.values().iterator().next());
+            log.info("Registered UK payment provider: {}", ukProviders.values().iterator().next().getClass().getName());
+        }
+
+        // Discover TARGET2 providers
+        Map<String, Target2PaymentProvider> target2Providers = applicationContext.getBeansOfType(Target2PaymentProvider.class);
+        if (!target2Providers.isEmpty()) {
+            providerMap.put(PaymentProviderType.TARGET2_PROVIDER, target2Providers.values().iterator().next());
+            log.info("Registered TARGET2 payment provider: {}", target2Providers.values().iterator().next().getClass().getName());
+        }
+
+        // Discover TIPS providers
+        Map<String, TipsPaymentProvider> tipsProviders = applicationContext.getBeansOfType(TipsPaymentProvider.class);
+        if (!tipsProviders.isEmpty()) {
+            providerMap.put(PaymentProviderType.TIPS_PROVIDER, tipsProviders.values().iterator().next());
+            log.info("Registered TIPS payment provider: {}", tipsProviders.values().iterator().next().getClass().getName());
+        }
+
+        // Discover EBA STEP2 providers
+        Map<String, EbaStep2PaymentProvider> ebaStep2Providers = applicationContext.getBeansOfType(EbaStep2PaymentProvider.class);
+        if (!ebaStep2Providers.isEmpty()) {
+            providerMap.put(PaymentProviderType.EBA_STEP2_PROVIDER, ebaStep2Providers.values().iterator().next());
+            log.info("Registered EBA STEP2 payment provider: {}", ebaStep2Providers.values().iterator().next().getClass().getName());
+        }
+
         // Discover Internal Transfer providers
         Map<String, InternalTransferProvider> internalProviders = applicationContext.getBeansOfType(InternalTransferProvider.class);
         if (!internalProviders.isEmpty()) {
@@ -84,6 +116,13 @@ public class PaymentProviderRegistry {
         paymentTypeToProviderMap.put(PaymentType.SEPA_SCT, PaymentProviderType.SEPA_PROVIDER);
         paymentTypeToProviderMap.put(PaymentType.SEPA_ICT, PaymentProviderType.SEPA_PROVIDER);
         paymentTypeToProviderMap.put(PaymentType.SEPA_SDD, PaymentProviderType.SEPA_PROVIDER);
+        paymentTypeToProviderMap.put(PaymentType.SEPA_SDD_CORE, PaymentProviderType.SEPA_PROVIDER);
+        paymentTypeToProviderMap.put(PaymentType.SEPA_SDD_B2B, PaymentProviderType.SEPA_PROVIDER);
+        paymentTypeToProviderMap.put(PaymentType.SEPA_SCT_INST, PaymentProviderType.SEPA_PROVIDER);
+        paymentTypeToProviderMap.put(PaymentType.SEPA_SDD_RECURRENT, PaymentProviderType.SEPA_PROVIDER);
+        paymentTypeToProviderMap.put(PaymentType.SEPA_SDD_ONE_OFF, PaymentProviderType.SEPA_PROVIDER);
+        paymentTypeToProviderMap.put(PaymentType.SEPA_SCT_FUTURE_DATED, PaymentProviderType.SEPA_PROVIDER);
+        paymentTypeToProviderMap.put(PaymentType.SEPA_SCT_STANDING_ORDER, PaymentProviderType.SEPA_PROVIDER);
 
         // Map SWIFT payment types to SWIFT provider
         paymentTypeToProviderMap.put(PaymentType.SWIFT_MT103, PaymentProviderType.SWIFT_PROVIDER);
@@ -95,6 +134,18 @@ public class PaymentProviderRegistry {
         paymentTypeToProviderMap.put(PaymentType.ACH_DEBIT, PaymentProviderType.ACH_PROVIDER);
         paymentTypeToProviderMap.put(PaymentType.WIRE_TRANSFER, PaymentProviderType.ACH_PROVIDER);
 
+        // Map UK payment types to UK provider
+        paymentTypeToProviderMap.put(PaymentType.UK_FPS, PaymentProviderType.UK_PROVIDER);
+        paymentTypeToProviderMap.put(PaymentType.UK_BACS, PaymentProviderType.UK_PROVIDER);
+        paymentTypeToProviderMap.put(PaymentType.UK_BACS_DIRECT_DEBIT, PaymentProviderType.UK_PROVIDER);
+        paymentTypeToProviderMap.put(PaymentType.UK_CHAPS, PaymentProviderType.UK_PROVIDER);
+        paymentTypeToProviderMap.put(PaymentType.UK_STANDING_ORDER, PaymentProviderType.UK_PROVIDER);
+
+        // Map European payment types to their respective providers
+        paymentTypeToProviderMap.put(PaymentType.TARGET2, PaymentProviderType.TARGET2_PROVIDER);
+        paymentTypeToProviderMap.put(PaymentType.TIPS, PaymentProviderType.TIPS_PROVIDER);
+        paymentTypeToProviderMap.put(PaymentType.EBA_STEP2, PaymentProviderType.EBA_STEP2_PROVIDER);
+
         // Map internal payment types to internal provider
         paymentTypeToProviderMap.put(PaymentType.INTERNAL_TRANSFER, PaymentProviderType.INTERNAL_PROVIDER);
         paymentTypeToProviderMap.put(PaymentType.INTERNAL_BULK_TRANSFER, PaymentProviderType.INTERNAL_PROVIDER);
@@ -102,7 +153,7 @@ public class PaymentProviderRegistry {
 
     private void logAvailableProviders() {
         log.info("Payment Provider Registry initialized with {} providers", providerMap.size());
-        providerMap.forEach((type, provider) -> 
+        providerMap.forEach((type, provider) ->
             log.info("Provider type: {}, Implementation: {}", type, provider.getClass().getName()));
     }
 

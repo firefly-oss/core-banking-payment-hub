@@ -54,4 +54,7 @@ public abstract class BasePaymentRequestDTO {
     @Valid
     @Schema(description = "Strong Customer Authentication (SCA) information")
     private ScaDTO sca;
+
+    @Schema(description = "Reference to a previous simulation, used to link execute/schedule/cancel operations with a simulation", example = "SIM-12345678")
+    private String simulationReference;
 }
