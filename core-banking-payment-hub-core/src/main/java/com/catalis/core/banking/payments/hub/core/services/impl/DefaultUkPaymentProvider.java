@@ -165,19 +165,7 @@ public class DefaultUkPaymentProvider implements UkPaymentProvider {
         return Mono.just(result);
     }
 
-    @Override
-    @Deprecated
-    public Mono<PaymentCancellationResultDTO> cancelFasterPayment(String paymentId, String reason) {
-        log.info("Cancelling UK Faster Payment (deprecated method): {}, reason: {}", paymentId, reason);
 
-        // Create a cancellation request and delegate to the new method
-        UkCancellationRequestDTO request = new UkCancellationRequestDTO();
-        request.setPaymentId(paymentId);
-        request.setCancellationReason(reason);
-        request.setPaymentType(PaymentType.UK_FPS);
-
-        return cancelFasterPayment(request);
-    }
 
     @Override
     public Mono<PaymentCancellationResultDTO> cancelFasterPayment(UkCancellationRequestDTO request) {
@@ -396,22 +384,7 @@ public class DefaultUkPaymentProvider implements UkPaymentProvider {
         return Mono.just(result);
     }
 
-    @Override
-    public Mono<PaymentCancellationResultDTO> cancelBacsPayment(String paymentId, String reason) {
-        log.info("Cancelling UK BACS Payment: {}, reason: {}", paymentId, reason);
 
-        PaymentCancellationResultDTO result = new PaymentCancellationResultDTO();
-        result.setPaymentId(paymentId);
-        result.setOperationType(PaymentOperationType.CANCEL);
-        result.setProvider(PaymentProviderType.UK_PROVIDER);
-        result.setTimestamp(LocalDateTime.now());
-        result.setSuccess(true);
-        result.setStatus(PaymentStatus.CANCELLED);
-        result.setCancellationReason(reason);
-        result.setCancellationDate(LocalDate.now());
-
-        return Mono.just(result);
-    }
 
     @Override
     public Mono<PaymentCancellationResultDTO> cancelBacsPayment(UkCancellationRequestDTO request) {
@@ -591,22 +564,7 @@ public class DefaultUkPaymentProvider implements UkPaymentProvider {
         return Mono.just(result);
     }
 
-    @Override
-    public Mono<PaymentCancellationResultDTO> cancelChapsPayment(String paymentId, String reason) {
-        log.info("Cancelling UK CHAPS Payment: {}, reason: {}", paymentId, reason);
 
-        PaymentCancellationResultDTO result = new PaymentCancellationResultDTO();
-        result.setPaymentId(paymentId);
-        result.setOperationType(PaymentOperationType.CANCEL);
-        result.setProvider(PaymentProviderType.UK_PROVIDER);
-        result.setTimestamp(LocalDateTime.now());
-        result.setSuccess(false);
-        result.setStatus(PaymentStatus.REJECTED);
-        result.setErrorCode("CANCELLATION_NOT_SUPPORTED");
-        result.setErrorMessage("Cancellation is not supported for UK CHAPS Payments once they have been submitted");
-
-        return Mono.just(result);
-    }
 
     @Override
     public Mono<PaymentCancellationResultDTO> cancelChapsPayment(UkCancellationRequestDTO request) {

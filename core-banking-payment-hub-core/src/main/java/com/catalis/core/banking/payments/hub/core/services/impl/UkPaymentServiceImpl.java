@@ -58,15 +58,7 @@ public class UkPaymentServiceImpl implements UkPaymentService {
                 .orElseGet(() -> Mono.error(new IllegalStateException("No UK payment provider available")));
     }
 
-    @Override
-    public Mono<PaymentCancellationResultDTO> cancelFasterPayment(String paymentId, String reason) {
-        log.debug("Cancelling UK Faster Payment: {}, reason: {}", paymentId, reason);
-        return getProvider()
-                .map(provider -> provider.cancelFasterPayment(paymentId, reason)
-                    .doOnSuccess(result -> log.info("UK Faster Payment cancellation completed: {}", result))
-                    .doOnError(error -> log.error("Error cancelling UK Faster Payment", error)))
-                .orElseGet(() -> Mono.error(new IllegalStateException("No UK payment provider available")));
-    }
+
 
     @Override
     public Mono<PaymentCancellationResultDTO> cancelFasterPayment(UkCancellationRequestDTO request) {
@@ -118,15 +110,7 @@ public class UkPaymentServiceImpl implements UkPaymentService {
                 .orElseGet(() -> Mono.error(new IllegalStateException("No UK payment provider available")));
     }
 
-    @Override
-    public Mono<PaymentCancellationResultDTO> cancelBacsPayment(String paymentId, String reason) {
-        log.debug("Cancelling UK BACS Payment: {}, reason: {}", paymentId, reason);
-        return getProvider()
-                .map(provider -> provider.cancelBacsPayment(paymentId, reason)
-                    .doOnSuccess(result -> log.info("UK BACS Payment cancellation completed: {}", result))
-                    .doOnError(error -> log.error("Error cancelling UK BACS Payment", error)))
-                .orElseGet(() -> Mono.error(new IllegalStateException("No UK payment provider available")));
-    }
+
 
     @Override
     public Mono<PaymentCancellationResultDTO> cancelBacsPayment(UkCancellationRequestDTO request) {
@@ -178,15 +162,7 @@ public class UkPaymentServiceImpl implements UkPaymentService {
                 .orElseGet(() -> Mono.error(new IllegalStateException("No UK payment provider available")));
     }
 
-    @Override
-    public Mono<PaymentCancellationResultDTO> cancelChapsPayment(String paymentId, String reason) {
-        log.debug("Cancelling UK CHAPS Payment: {}, reason: {}", paymentId, reason);
-        return getProvider()
-                .map(provider -> provider.cancelChapsPayment(paymentId, reason)
-                    .doOnSuccess(result -> log.info("UK CHAPS Payment cancellation completed: {}", result))
-                    .doOnError(error -> log.error("Error cancelling UK CHAPS Payment", error)))
-                .orElseGet(() -> Mono.error(new IllegalStateException("No UK payment provider available")));
-    }
+
 
     @Override
     public Mono<PaymentCancellationResultDTO> cancelChapsPayment(UkCancellationRequestDTO request) {

@@ -33,16 +33,6 @@ public interface UkPaymentProvider {
      */
     Mono<PaymentExecutionResultDTO> executeFasterPayment(UkFasterPaymentRequestDTO request);
 
-    /**
-     * Cancels an existing UK Faster Payment.
-     *
-     * @param paymentId The ID of the payment to cancel
-     * @param reason The reason for cancellation
-     * @return A Mono emitting the cancellation result
-     * @deprecated Use {@link #cancelFasterPayment(UkCancellationRequestDTO)} instead
-     */
-    @Deprecated
-    Mono<PaymentCancellationResultDTO> cancelFasterPayment(String paymentId, String reason);
 
     /**
      * Cancels an existing UK Faster Payment using the cancellation request DTO.
@@ -86,16 +76,6 @@ public interface UkPaymentProvider {
      */
     Mono<PaymentExecutionResultDTO> executeBacsPayment(UkBacsPaymentRequestDTO request);
 
-    /**
-     * Cancels an existing UK BACS payment.
-     *
-     * @param paymentId The ID of the payment to cancel
-     * @param reason The reason for cancellation
-     * @return A Mono emitting the cancellation result
-     * @deprecated Use {@link #cancelBacsPayment(UkCancellationRequestDTO)} instead
-     */
-    @Deprecated
-    Mono<PaymentCancellationResultDTO> cancelBacsPayment(String paymentId, String reason);
 
     /**
      * Cancels an existing UK BACS payment using the cancellation request DTO.
@@ -139,16 +119,6 @@ public interface UkPaymentProvider {
      */
     Mono<PaymentExecutionResultDTO> executeChapsPayment(UkChapsPaymentRequestDTO request);
 
-    /**
-     * Cancels an existing UK CHAPS payment.
-     *
-     * @param paymentId The ID of the payment to cancel
-     * @param reason The reason for cancellation
-     * @return A Mono emitting the cancellation result
-     * @deprecated Use {@link #cancelChapsPayment(UkCancellationRequestDTO)} instead
-     */
-    @Deprecated
-    Mono<PaymentCancellationResultDTO> cancelChapsPayment(String paymentId, String reason);
 
     /**
      * Cancels an existing UK CHAPS payment using the cancellation request DTO.
