@@ -31,16 +31,6 @@ public interface AchPaymentProvider {
      */
     Mono<PaymentExecutionResultDTO> execute(AchTransferRequestDTO request);
 
-    /**
-     * Cancels an existing ACH payment.
-     *
-     * @param paymentId The ID of the payment to cancel
-     * @param reason The reason for cancellation
-     * @return A Mono emitting the cancellation result
-     * @deprecated Use {@link #cancel(AchCancellationRequestDTO)} instead
-     */
-    @Deprecated
-    Mono<PaymentCancellationResultDTO> cancel(String paymentId, String reason);
 
     /**
      * Cancels an existing ACH payment using the cancellation request DTO.

@@ -55,15 +55,7 @@ public class AchPaymentServiceImpl implements AchPaymentService {
                 .orElseGet(() -> Mono.error(new IllegalStateException("No ACH payment provider available")));
     }
 
-    @Override
-    public Mono<PaymentCancellationResultDTO> cancelPayment(String paymentId, String reason) {
-        log.debug("Cancelling ACH payment: {}, reason: {}", paymentId, reason);
-        return getProvider()
-                .map(provider -> provider.cancel(paymentId, reason)
-                    .doOnSuccess(result -> log.info("ACH payment cancellation completed: {}", result))
-                    .doOnError(error -> log.error("Error cancelling ACH payment", error)))
-                .orElseGet(() -> Mono.error(new IllegalStateException("No ACH payment provider available")));
-    }
+
 
     @Override
     public Mono<PaymentCancellationResultDTO> cancelPayment(AchCancellationRequestDTO request) {

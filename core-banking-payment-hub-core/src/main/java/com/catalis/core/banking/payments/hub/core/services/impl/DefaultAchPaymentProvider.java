@@ -165,18 +165,7 @@ public class DefaultAchPaymentProvider implements AchPaymentProvider {
         return Mono.just(result);
     }
 
-    @Override
-    @Deprecated
-    public Mono<PaymentCancellationResultDTO> cancel(String paymentId, String reason) {
-        log.info("Cancelling ACH payment (deprecated method): {}, reason: {}", paymentId, reason);
 
-        // Create a cancellation request and delegate to the new method
-        AchCancellationRequestDTO request = new AchCancellationRequestDTO();
-        request.setPaymentId(paymentId);
-        request.setCancellationReason(reason);
-
-        return cancel(request);
-    }
 
     @Override
     public Mono<PaymentCancellationResultDTO> cancel(AchCancellationRequestDTO request) {
