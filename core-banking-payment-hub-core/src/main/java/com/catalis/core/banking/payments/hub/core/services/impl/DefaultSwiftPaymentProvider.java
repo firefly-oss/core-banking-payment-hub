@@ -1,5 +1,6 @@
 package com.catalis.core.banking.payments.hub.core.services.impl;
 
+import com.catalis.core.banking.payments.hub.core.utils.ScaUtils;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentCancellationResultDTO;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentExecutionResultDTO;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentScheduleResultDTO;
@@ -52,16 +53,43 @@ public class DefaultSwiftPaymentProvider implements SwiftPaymentProvider {
         result.setFeeCurrency(request.getCurrency());
         result.setEstimatedExchangeRate(new BigDecimal("1.1050"));
         result.setFeasible(true);
+        result.setSimulationReference(ScaUtils.generateSimulationReference());
 
         // Handle SCA (Strong Customer Authentication)
         boolean scaRequired = isScaRequired(request);
         result.setScaRequired(scaRequired);
         result.setScaCompleted(false); // Initially not completed
 
-        if (scaRequired && request.getSca() != null) {
-            ScaResultDTO scaResult = validateSca(request.getSca());
+        if (scaRequired) {
+            // Always trigger SCA delivery during simulation if required
+            result.setScaDeliveryTriggered(true);
+            result.setScaDeliveryTimestamp(LocalDateTime.now());
+
+            // Determine SCA method and recipient
+            String scaMethod = request.getSca() != null && request.getSca().getMethod() != null ?
+                    request.getSca().getMethod() : "SMS"; // Default to SMS if not specified
+            String scaRecipient = request.getSca() != null && request.getSca().getRecipient() != null ?
+                    request.getSca().getRecipient() : ScaUtils.maskPhoneNumber(getDefaultPhoneNumber(request));
+
+            LocalDateTime expiryTimestamp = LocalDateTime.now().plusMinutes(15); // SCA code valid for 15 minutes
+            result.setScaDeliveryMethod(scaMethod);
+            result.setScaDeliveryRecipient(scaRecipient);
+            result.setScaExpiryTimestamp(expiryTimestamp);
+
+            // Create SCA result with challenge information
+            ScaResultDTO scaResult = ScaUtils.createDefaultScaResult(scaMethod, expiryTimestamp);
+
             result.setScaResult(scaResult);
-            result.setScaCompleted(scaResult.isSuccess());
+
+            // If SCA code is already provided in the request, validate it
+            if (request.getSca() != null && request.getSca().getAuthenticationCode() != null) {
+                ScaResultDTO validationResult = ScaUtils.validateSca(request.getSca());
+                result.setScaResult(validationResult);
+                result.setScaCompleted(validationResult.isSuccess());
+            }
+
+            log.info("SCA delivery triggered for SWIFT payment simulation: method={}, recipient={}, expiryTime={}",
+                    scaMethod, scaRecipient, result.getScaExpiryTimestamp());
         }
 
         return Mono.just(result);
@@ -85,6 +113,14 @@ public class DefaultSwiftPaymentProvider implements SwiftPaymentProvider {
         result.setScaCompleted(false); // Initially not completed
 
         if (scaRequired) {
+            // Check if a simulation reference is provided
+            String simulationReference = request.getSimulationReference();
+            if (simulationReference != null && !simulationReference.isEmpty()) {
+                log.info("Using simulation reference for SCA validation: {}", simulationReference);
+                // In a real implementation, we would look up the simulation details using the reference
+                // and validate the SCA code against the previously delivered code
+            }
+
             if (request.getSca() == null) {
                 // SCA is required but not provided
                 result.setSuccess(false);
@@ -95,7 +131,7 @@ public class DefaultSwiftPaymentProvider implements SwiftPaymentProvider {
                 return Mono.just(result);
             }
 
-            ScaResultDTO scaResult = validateSca(request.getSca());
+            ScaResultDTO scaResult = ScaUtils.validateSca(request.getSca());
             result.setScaResult(scaResult);
             result.setScaCompleted(scaResult.isSuccess());
 
@@ -141,6 +177,14 @@ public class DefaultSwiftPaymentProvider implements SwiftPaymentProvider {
         result.setScaRequired(scaRequired);
         result.setScaCompleted(false); // Initially not completed
 
+        // Check if a simulation reference is provided
+        String simulationReference = request.getSimulationReference();
+        if (simulationReference != null && !simulationReference.isEmpty()) {
+            log.info("Using simulation reference for SCA validation in cancellation: {}", simulationReference);
+            // In a real implementation, we would look up the simulation details using the reference
+            // and validate the SCA code against the previously delivered code
+        }
+
         if (scaRequired) {
             if (request.getSca() == null) {
                 // SCA is required but not provided
@@ -151,7 +195,7 @@ public class DefaultSwiftPaymentProvider implements SwiftPaymentProvider {
                 return Mono.just(result);
             }
 
-            ScaResultDTO scaResult = validateSca(request.getSca());
+            ScaResultDTO scaResult = ScaUtils.validateSca(request.getSca());
             result.setScaResult(scaResult);
             result.setScaCompleted(scaResult.isSuccess());
 
@@ -196,6 +240,14 @@ public class DefaultSwiftPaymentProvider implements SwiftPaymentProvider {
         result.setScaRequired(scaRequired);
         result.setScaCompleted(false); // Initially not completed
 
+        // Check if a simulation reference is provided
+        String simulationReference = request.getPaymentRequest().getSimulationReference();
+        if (simulationReference != null && !simulationReference.isEmpty()) {
+            log.info("Using simulation reference for SCA validation in scheduling: {}", simulationReference);
+            // In a real implementation, we would look up the simulation details using the reference
+            // and validate the SCA code against the previously delivered code
+        }
+
         if (scaRequired) {
             if (request.getPaymentRequest().getSca() == null) {
                 // SCA is required but not provided
@@ -206,7 +258,7 @@ public class DefaultSwiftPaymentProvider implements SwiftPaymentProvider {
                 return Mono.just(result);
             }
 
-            ScaResultDTO scaResult = validateSca(request.getPaymentRequest().getSca());
+            ScaResultDTO scaResult = ScaUtils.validateSca(request.getPaymentRequest().getSca());
             result.setScaResult(scaResult);
             result.setScaCompleted(scaResult.isSuccess());
 
@@ -264,44 +316,7 @@ public class DefaultSwiftPaymentProvider implements SwiftPaymentProvider {
         return Math.random() > 0.5;
     }
 
-    /**
-     * Validates the provided SCA information.
-     *
-     * @param sca The SCA information to validate
-     * @return The validation result
-     */
-    private ScaResultDTO validateSca(ScaDTO sca) {
-        // In a real implementation, this would validate the SCA against a backend system
-        // For simulation, we'll accept a specific code or generate random success/failure
-
-        ScaResultDTO result = new ScaResultDTO();
-        result.setMethod(sca.getMethod());
-        result.setChallengeId(sca.getChallengeId() != null ? sca.getChallengeId() : "CHL-" + UUID.randomUUID().toString().substring(0, 8));
-        result.setVerificationTimestamp(LocalDateTime.now());
-        result.setAttemptCount(1);
-        result.setMaxAttempts(3);
-        result.setExpired(false);
-        result.setExpiryTimestamp(LocalDateTime.now().plusMinutes(15));
-
-        // For testing, accept "123456" as a valid code
-        if (sca.getAuthenticationCode() != null && "123456".equals(sca.getAuthenticationCode())) {
-            result.setSuccess(true);
-        } else if (sca.getAuthenticationCode() == null) {
-            result.setSuccess(false);
-            result.setErrorCode("SCA_CODE_MISSING");
-            result.setErrorMessage("Authentication code is required");
-        } else {
-            // Random success/failure for other codes
-            boolean success = Math.random() > 0.3; // 70% success rate
-            result.setSuccess(success);
-            if (!success) {
-                result.setErrorCode("SCA_INVALID_CODE");
-                result.setErrorMessage("Invalid authentication code");
-            }
-        }
-
-        return result;
-    }
+    // Using ScaUtils.validateSca() instead
 
     /**
      * Determines if a payment is considered high-value based on its ID.
@@ -315,14 +330,20 @@ public class DefaultSwiftPaymentProvider implements SwiftPaymentProvider {
         return Math.random() > 0.5;
     }
 
+    // Using ScaUtils.validateSca() instead
+
+    // Using ScaUtils.maskPhoneNumber() instead
+
     /**
-     * Validates the provided SCA information for a cancellation request.
+     * Gets a default phone number for the customer based on the request.
+     * In a real implementation, this would look up the customer's phone number from a database.
      *
-     * @param sca The SCA information to validate
-     * @return The validation result
+     * @param request The payment request
+     * @return A default phone number
      */
-    private ScaResultDTO validateCancellationSca(ScaDTO sca) {
-        // For simplicity, we'll use the same validation logic as for payments
-        return validateSca(sca);
+    private String getDefaultPhoneNumber(SwiftPaymentRequestDTO request) {
+        // In a real implementation, this would look up the customer's phone number
+        // For simulation, we'll return a dummy phone number
+        return "+1234567890";
     }
 }

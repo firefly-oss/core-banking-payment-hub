@@ -1,4 +1,4 @@
-package com.catalis.core.banking.payments.hub.interfaces.dtos.sepa;
+package com.catalis.core.banking.payments.hub.interfaces.dtos.ach;
 
 import com.catalis.core.banking.payments.hub.interfaces.dtos.common.ScaDTO;
 import com.catalis.core.banking.payments.hub.interfaces.enums.PaymentProviderType;
@@ -13,36 +13,33 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Request for cancelling a SEPA payment.
+ * Request for cancelling an ACH payment.
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Request for cancelling a SEPA payment")
-public class SepaCancellationRequestDTO {
+@Schema(description = "Request for cancelling an ACH payment")
+public class AchCancellationRequestDTO {
 
     @NotBlank(message = "Payment ID is required")
-    @Schema(description = "ID of the payment to cancel", example = "PAY-123456789", required = true)
+    @Schema(description = "ID of the payment to cancel", example = "ACH-12345678", required = true)
     private String paymentId;
 
     @NotNull(message = "Payment type is required")
     @Schema(description = "Type of payment", required = true)
     private PaymentType paymentType;
 
-    @Schema(description = "Original end-to-end ID of the payment", example = "E2E-REF-12345")
-    private String endToEndId;
-
-    @Schema(description = "Reason for cancellation", example = "DUPL")
+    @Schema(description = "Reason for cancellation", example = "Customer request")
     private String cancellationReason;
 
-    @Schema(description = "Additional information about the cancellation", example = "Duplicate payment")
+    @Schema(description = "Additional information about the cancellation", example = "Payment no longer needed")
     private String additionalInformation;
 
-    @Schema(description = "Preferred payment provider", example = "TREEZOR")
+    @Schema(description = "Preferred payment provider", example = "ACH_PROVIDER")
     private PaymentProviderType preferredProvider;
 
-    @Schema(description = "Original transaction reference", example = "TRN-123456789")
+    @Schema(description = "Original transaction reference", example = "TRN-12345678")
     private String originalTransactionReference;
 
     @Schema(description = "Flag indicating if a partial cancellation is acceptable")

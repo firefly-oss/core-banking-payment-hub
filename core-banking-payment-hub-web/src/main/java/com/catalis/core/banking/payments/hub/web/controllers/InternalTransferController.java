@@ -5,6 +5,7 @@ import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentCance
 import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentExecutionResultDTO;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentScheduleResultDTO;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentSimulationResultDTO;
+import com.catalis.core.banking.payments.hub.interfaces.dtos.internal.InternalTransferCancellationRequestDTO;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.internal.InternalTransferRequestDTO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -30,17 +31,17 @@ import reactor.core.publisher.Mono;
 @RequestMapping("/api/v1/payments/internal")
 @Tag(name = "Internal Transfers", description = "Operations for internal transfers between accounts")
 public class InternalTransferController {
-    
+
     private static final Logger log = LoggerFactory.getLogger(InternalTransferController.class);
-    
+
     private final InternalTransferService internalTransferService;
-    
+
     @Autowired
     public InternalTransferController(InternalTransferService internalTransferService) {
         this.internalTransferService = internalTransferService;
         log.info("Initialized InternalTransferController");
     }
-    
+
     @PostMapping(value = "/simulate", produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "Simulate an internal transfer", description = "Simulates an internal transfer without actual execution")
     @ApiResponses(value = {
@@ -55,7 +56,7 @@ public class InternalTransferController {
         log.debug("Received internal transfer simulation request: {}", request);
         return internalTransferService.simulateTransfer(request);
     }
-    
+
     @PostMapping(value = "/execute", produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "Execute an internal transfer", description = "Executes an internal transfer")
     @ApiResponses(value = {
@@ -70,7 +71,7 @@ public class InternalTransferController {
         log.debug("Received internal transfer execution request: {}", request);
         return internalTransferService.executeTransfer(request);
     }
-    
+
     @PostMapping(value = "/cancel/{transferId}", produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "Cancel an internal transfer", description = "Cancels an existing internal transfer")
     @ApiResponses(value = {
@@ -80,6 +81,7 @@ public class InternalTransferController {
             @ApiResponse(responseCode = "404", description = "Transfer not found"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
+    @Deprecated
     public Mono<PaymentCancellationResultDTO> cancelTransfer(
             @Parameter(description = "Transfer ID", required = true)
             @PathVariable("transferId") String transferId,
@@ -88,7 +90,38 @@ public class InternalTransferController {
         log.debug("Received internal transfer cancellation request for ID: {}, reason: {}", transferId, reason);
         return internalTransferService.cancelTransfer(transferId, reason);
     }
-    
+
+    @PostMapping(value = "/cancel", produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Cancel an internal transfer", description = "Cancels an existing internal transfer with SCA support")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Cancellation successful",
+                    content = @Content(schema = @Schema(implementation = PaymentCancellationResultDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Invalid request"),
+            @ApiResponse(responseCode = "404", description = "Transfer not found"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public Mono<PaymentCancellationResultDTO> cancelTransfer(
+            @Valid @RequestBody InternalTransferCancellationRequestDTO request) {
+        log.debug("Received internal transfer cancellation request: {}", request);
+        return internalTransferService.cancelTransfer(request);
+    }
+
+    @PostMapping(value = "/cancel/simulate", produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Simulate cancellation of an internal transfer",
+               description = "Simulates cancellation of an internal transfer to trigger SCA delivery and provide information")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Simulation successful",
+                    content = @Content(schema = @Schema(implementation = PaymentSimulationResultDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Invalid request"),
+            @ApiResponse(responseCode = "404", description = "Transfer not found"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public Mono<PaymentSimulationResultDTO> simulateCancellation(
+            @Valid @RequestBody InternalTransferCancellationRequestDTO request) {
+        log.debug("Received internal transfer cancellation simulation request: {}", request);
+        return internalTransferService.simulateCancellation(request);
+    }
+
     @PostMapping(value = "/schedule", produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "Schedule an internal transfer", description = "Schedules an internal transfer for future execution")
     @ApiResponses(value = {
@@ -104,7 +137,7 @@ public class InternalTransferController {
             @RequestParam("executionDate") @NotBlank String executionDate,
             @Parameter(description = "Recurrence pattern (CRON expression)")
             @RequestParam(value = "recurrencePattern", required = false) String recurrencePattern) {
-        log.debug("Received internal transfer schedule request: {}, execution date: {}, recurrence: {}", 
+        log.debug("Received internal transfer schedule request: {}, execution date: {}, recurrence: {}",
                 request, executionDate, recurrencePattern);
         return internalTransferService.scheduleTransfer(request, executionDate, recurrencePattern);
     }

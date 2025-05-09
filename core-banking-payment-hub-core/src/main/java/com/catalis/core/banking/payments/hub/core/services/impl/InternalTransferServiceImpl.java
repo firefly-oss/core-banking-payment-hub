@@ -6,6 +6,7 @@ import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentCance
 import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentExecutionResultDTO;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentScheduleResultDTO;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentSimulationResultDTO;
+import com.catalis.core.banking.payments.hub.interfaces.dtos.internal.InternalTransferCancellationRequestDTO;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.internal.InternalTransferRequestDTO;
 import com.catalis.core.banking.payments.hub.interfaces.enums.PaymentProviderType;
 import com.catalis.core.banking.payments.hub.interfaces.providers.InternalTransferProvider;
@@ -55,20 +56,43 @@ public class InternalTransferServiceImpl implements InternalTransferService {
     }
 
     @Override
+    @Deprecated
     public Mono<PaymentCancellationResultDTO> cancelTransfer(String transferId, String reason) {
-        log.debug("Cancelling internal transfer: {}, reason: {}", transferId, reason);
+        log.debug("Cancelling internal transfer (deprecated method): {}, reason: {}", transferId, reason);
+
+        // Create a cancellation request and delegate to the new method
+        InternalTransferCancellationRequestDTO request = new InternalTransferCancellationRequestDTO();
+        request.setPaymentId(transferId);
+        request.setCancellationReason(reason);
+
+        return cancelTransfer(request);
+    }
+
+    @Override
+    public Mono<PaymentCancellationResultDTO> cancelTransfer(InternalTransferCancellationRequestDTO request) {
+        log.debug("Cancelling internal transfer with SCA: {}", request);
         return getProvider()
-                .map(provider -> provider.cancel(transferId, reason)
-                    .doOnSuccess(result -> log.info("Internal transfer cancellation completed: {}", result))
-                    .doOnError(error -> log.error("Error cancelling internal transfer", error)))
+                .map(provider -> provider.cancel(request)
+                    .doOnSuccess(result -> log.info("Internal transfer cancellation with SCA completed: {}", result))
+                    .doOnError(error -> log.error("Error cancelling internal transfer with SCA", error)))
                 .orElseGet(() -> Mono.error(new IllegalStateException("No internal transfer provider available")));
     }
 
     @Override
-    public Mono<PaymentScheduleResultDTO> scheduleTransfer(InternalTransferRequestDTO request, 
-                                                         String executionDate, 
+    public Mono<PaymentSimulationResultDTO> simulateCancellation(InternalTransferCancellationRequestDTO request) {
+        log.debug("Simulating cancellation of internal transfer: {}", request);
+        return getProvider()
+                .map(provider -> provider.simulateCancellation(request)
+                    .doOnSuccess(result -> log.info("Internal transfer cancellation simulation completed: {}", result))
+                    .doOnError(error -> log.error("Error simulating cancellation of internal transfer", error)))
+                .orElseGet(() -> Mono.error(new IllegalStateException("No internal transfer provider available")));
+    }
+
+    @Override
+    public Mono<PaymentScheduleResultDTO> scheduleTransfer(InternalTransferRequestDTO request,
+                                                         String executionDate,
                                                          String recurrencePattern) {
-        log.debug("Scheduling internal transfer: {}, execution date: {}, recurrence: {}", 
+        log.debug("Scheduling internal transfer: {}, execution date: {}, recurrence: {}",
                 request, executionDate, recurrencePattern);
         return getProvider()
                 .map(provider -> provider.schedule(request, executionDate, recurrencePattern)

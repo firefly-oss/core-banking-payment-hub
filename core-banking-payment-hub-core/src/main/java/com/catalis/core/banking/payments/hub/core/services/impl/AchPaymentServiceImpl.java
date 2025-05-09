@@ -2,6 +2,7 @@ package com.catalis.core.banking.payments.hub.core.services.impl;
 
 import com.catalis.core.banking.payments.hub.core.config.PaymentProviderRegistry;
 import com.catalis.core.banking.payments.hub.core.services.AchPaymentService;
+import com.catalis.core.banking.payments.hub.interfaces.dtos.ach.AchCancellationRequestDTO;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.ach.AchTransferRequestDTO;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentCancellationResultDTO;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentExecutionResultDTO;
@@ -65,10 +66,30 @@ public class AchPaymentServiceImpl implements AchPaymentService {
     }
 
     @Override
-    public Mono<PaymentScheduleResultDTO> schedulePayment(AchTransferRequestDTO request, 
-                                                        String executionDate, 
+    public Mono<PaymentCancellationResultDTO> cancelPayment(AchCancellationRequestDTO request) {
+        log.debug("Cancelling ACH payment: {}", request);
+        return getProvider()
+                .map(provider -> provider.cancel(request)
+                    .doOnSuccess(result -> log.info("ACH payment cancellation completed: {}", result))
+                    .doOnError(error -> log.error("Error cancelling ACH payment", error)))
+                .orElseGet(() -> Mono.error(new IllegalStateException("No ACH payment provider available")));
+    }
+
+    @Override
+    public Mono<PaymentSimulationResultDTO> simulateCancellation(AchCancellationRequestDTO request) {
+        log.debug("Simulating cancellation of ACH payment: {}", request);
+        return getProvider()
+                .map(provider -> provider.simulateCancellation(request)
+                    .doOnSuccess(result -> log.info("ACH payment cancellation simulation completed: {}", result))
+                    .doOnError(error -> log.error("Error simulating cancellation of ACH payment", error)))
+                .orElseGet(() -> Mono.error(new IllegalStateException("No ACH payment provider available")));
+    }
+
+    @Override
+    public Mono<PaymentScheduleResultDTO> schedulePayment(AchTransferRequestDTO request,
+                                                        String executionDate,
                                                         String recurrencePattern) {
-        log.debug("Scheduling ACH payment: {}, execution date: {}, recurrence: {}", 
+        log.debug("Scheduling ACH payment: {}, execution date: {}, recurrence: {}",
                 request, executionDate, recurrencePattern);
         return getProvider()
                 .map(provider -> provider.schedule(request, executionDate, recurrencePattern)

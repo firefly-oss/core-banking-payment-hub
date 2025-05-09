@@ -4,6 +4,7 @@ import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentCance
 import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentExecutionResultDTO;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentScheduleResultDTO;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentSimulationResultDTO;
+import com.catalis.core.banking.payments.hub.interfaces.dtos.internal.InternalTransferCancellationRequestDTO;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.internal.InternalTransferRequestDTO;
 import reactor.core.publisher.Mono;
 
@@ -34,8 +35,27 @@ public interface InternalTransferService {
      * @param transferId The ID of the transfer to cancel
      * @param reason The reason for cancellation
      * @return A Mono emitting the cancellation result
+     * @deprecated Use {@link #cancelTransfer(InternalTransferCancellationRequestDTO)} instead
      */
+    @Deprecated
     Mono<PaymentCancellationResultDTO> cancelTransfer(String transferId, String reason);
+
+    /**
+     * Cancels an existing internal transfer using the cancellation request DTO.
+     *
+     * @param request The cancellation request containing transfer ID, reason, and SCA information
+     * @return A Mono emitting the cancellation result
+     */
+    Mono<PaymentCancellationResultDTO> cancelTransfer(InternalTransferCancellationRequestDTO request);
+
+    /**
+     * Simulates the cancellation of an internal transfer.
+     * This is used to trigger SCA delivery and provide information about the cancellation.
+     *
+     * @param request The cancellation request to simulate
+     * @return A Mono emitting the simulation result
+     */
+    Mono<PaymentSimulationResultDTO> simulateCancellation(InternalTransferCancellationRequestDTO request);
 
     /**
      * Schedules an internal transfer for future execution.
@@ -45,7 +65,7 @@ public interface InternalTransferService {
      * @param recurrencePattern Optional recurrence pattern for recurring transfers
      * @return A Mono emitting the scheduling result
      */
-    Mono<PaymentScheduleResultDTO> scheduleTransfer(InternalTransferRequestDTO request, 
-                                                  String executionDate, 
+    Mono<PaymentScheduleResultDTO> scheduleTransfer(InternalTransferRequestDTO request,
+                                                  String executionDate,
                                                   String recurrencePattern);
 }
