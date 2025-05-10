@@ -1,6 +1,7 @@
 package com.catalis.core.banking.payments.hub.core.services.impl;
 
 import com.catalis.core.banking.payments.hub.core.utils.MetricsUtils;
+import com.catalis.core.banking.payments.hub.core.utils.ScaUtils;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.ach.AchCancellationRequestDTO;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.ach.AchTransferRequestDTO;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentCancellationResultDTO;
@@ -76,7 +77,7 @@ public class DefaultAchPaymentProvider extends AbstractBasePaymentProvider imple
             String scaMethod = request.getSca() != null && request.getSca().getMethod() != null ?
                     request.getSca().getMethod() : "SMS"; // Default to SMS if not specified
             String scaRecipient = request.getSca() != null && request.getSca().getRecipient() != null ?
-                    request.getSca().getRecipient() : maskPhoneNumber(getDefaultPhoneNumber(request));
+                    request.getSca().getRecipient() : ScaUtils.maskPhoneNumber(getDefaultPhoneNumber(request));
 
             result.setScaDeliveryMethod(scaMethod);
             result.setScaDeliveryRecipient(scaRecipient);
@@ -272,7 +273,7 @@ public class DefaultAchPaymentProvider extends AbstractBasePaymentProvider imple
             String scaMethod = request.getSca() != null && request.getSca().getMethod() != null ?
                     request.getSca().getMethod() : "SMS"; // Default to SMS if not specified
             String scaRecipient = request.getSca() != null && request.getSca().getRecipient() != null ?
-                    request.getSca().getRecipient() : maskPhoneNumber("+1234567890");
+                    request.getSca().getRecipient() : ScaUtils.maskPhoneNumber("+1234567890");
 
             result.setScaDeliveryMethod(scaMethod);
             result.setScaDeliveryRecipient(scaRecipient);

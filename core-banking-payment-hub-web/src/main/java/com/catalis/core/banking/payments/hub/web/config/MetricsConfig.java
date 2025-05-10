@@ -25,42 +25,10 @@ public class MetricsConfig {
             registry.config()
                     .commonTags("application", "payment-hub")
                     // Add a filter to deny metrics that match the pattern
-                    .meterFilter(MeterFilter.deny(id -> 
-                        id.getName().startsWith("jvm.") && 
-                        id.getTag("region") != null && 
-                        id.getTag("region").equals("test")))
-                    // Configure SLA thresholds for payment operations
-                    .meterFilter(
-                        new MeterFilter() {
-                            @Override
-                            public MeterFilter.DistributionStatisticConfig configure(io.micrometer.core.instrument.Meter.Id id, MeterFilter.DistributionStatisticConfig config) {
-                                if (id.getName().startsWith("payment.provider.")) {
-                                    return DistributionStatisticConfig.builder()
-                                            .percentiles(0.5, 0.95, 0.99)
-                                            .serviceLevelObjectives(
-                                                    50.0, // 50ms
-                                                    100.0, // 100ms
-                                                    500.0, // 500ms
-                                                    1000.0 // 1s
-                                            )
-                                            .build()
-                                            .merge(config);
-                                }
-                                if (id.getName().startsWith("sca.")) {
-                                    return DistributionStatisticConfig.builder()
-                                            .percentiles(0.5, 0.95, 0.99)
-                                            .serviceLevelObjectives(
-                                                    100.0, // 100ms
-                                                    500.0, // 500ms
-                                                    1000.0, // 1s
-                                                    5000.0 // 5s
-                                            )
-                                            .build()
-                                            .merge(config);
-                                }
-                                return config;
-                            }
-                        });
+                    .meterFilter(MeterFilter.deny(id ->
+                        id.getName().startsWith("jvm.") &&
+                        id.getTag("region") != null &&
+                        id.getTag("region").equals("test")));
         };
     }
 }

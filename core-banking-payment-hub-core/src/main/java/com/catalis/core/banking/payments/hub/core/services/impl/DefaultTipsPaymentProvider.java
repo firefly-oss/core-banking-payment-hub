@@ -77,7 +77,7 @@ public class DefaultTipsPaymentProvider extends AbstractBasePaymentProvider impl
             String scaMethod = request.getSca() != null && request.getSca().getMethod() != null ?
                     request.getSca().getMethod() : "SMS"; // Default to SMS if not specified
             String scaRecipient = request.getSca() != null && request.getSca().getRecipient() != null ?
-                    request.getSca().getRecipient() : maskPhoneNumber(getDefaultPhoneNumber(request));
+                    request.getSca().getRecipient() : ScaUtils.maskPhoneNumber(getDefaultPhoneNumber(request));
 
             result.setScaDeliveryMethod(scaMethod);
             result.setScaDeliveryRecipient(scaRecipient);

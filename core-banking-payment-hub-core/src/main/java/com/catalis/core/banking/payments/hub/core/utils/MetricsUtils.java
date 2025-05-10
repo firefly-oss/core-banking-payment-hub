@@ -22,7 +22,7 @@ public class MetricsUtils {
 
     private static MeterRegistry meterRegistry;
 
-    @Autowired
+    @Autowired(required = false)
     public MetricsUtils(MeterRegistry meterRegistry) {
         MetricsUtils.meterRegistry = meterRegistry;
     }
