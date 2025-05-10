@@ -34,7 +34,7 @@ Security considerations are integrated into the architecture from the ground up,
 
 ### Observability
 
-The system provides comprehensive logging, monitoring, and tracing capabilities for operational visibility.
+The system provides comprehensive logging, monitoring, metrics collection, and tracing capabilities for operational visibility. Metrics are collected using Micrometer and can be exported to monitoring systems like Prometheus and Grafana.
 
 ## Hexagonal Architecture
 
@@ -200,11 +200,49 @@ public interface BasePaymentProvider {
 }
 ```
 
+### Abstract Base Provider
+
+The system implements a standardized approach to payment providers through an abstract base implementation:
+
+```java
+public abstract class AbstractBasePaymentProvider implements BasePaymentProvider {
+    protected final ScaProvider scaProvider;
+
+    public AbstractBasePaymentProvider(ScaProvider scaProvider) {
+        this.scaProvider = scaProvider;
+    }
+
+    @Override
+    public Mono<ScaResultDTO> triggerSca(String recipientIdentifier, String method, String referenceId) {
+        // Standardized implementation with metrics collection
+    }
+
+    @Override
+    public Mono<ScaResultDTO> validateSca(ScaDTO sca) {
+        // Standardized implementation with metrics collection
+    }
+
+    @Override
+    public Mono<Boolean> isHealthy() {
+        // Standardized implementation with metrics collection
+    }
+
+    protected abstract Mono<Boolean> checkProviderHealth();
+    protected abstract String getProviderName();
+}
+```
+
+This abstract base class provides:
+- Standardized SCA handling across all providers
+- Consistent error handling and response formatting
+- Comprehensive metrics collection using Micrometer
+- Common health check implementation
+
 The specific payment provider interfaces then add their own payment-specific operations:
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────────┐
-│                             Provider Interfaces                                │
+│                             Provider Interfaces                               │
 ├───────────────────────────────────────────────────────────────────────────────┘
 │
 ▼
@@ -392,26 +430,26 @@ The payment hub implements Strong Customer Authentication (SCA) as required by r
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────────┐
-│                      Strong Customer Authentication Flow                       │
+│                      Strong Customer Authentication Flow                      │
 ├───────────────────────────────────────────────────────────────────────────────┘
 │
 ▼
 ┌───────────────────────────────────────────────────────────────────────────────┐
-│                             Payment Request                                    │
+│                             Payment Request                                   │
 │                                                                               │
 │  ┌─────────────────────────────┐                                              │
-│  │        ScaDTO              │                                              │
-│  │                            │                                              │
-│  │ - method: SMS/EMAIL/APP    │                                              │
-│  │ - recipient: Phone/Email   │                                              │
-│  │ - authenticationCode       │                                              │
-│  │ - challengeId              │                                              │
+│  │        ScaDTO              │                                               │
+│  │                            │                                               │
+│  │ - method: SMS/EMAIL/APP    │                                               │
+│  │ - recipient: Phone/Email   │                                               │
+│  │ - authenticationCode       │                                               │
+│  │ - challengeId              │                                               │
 │  └─────────────────────────────┘                                              │
 └───────────────────────────────────────────────────────────────────────────────┘
        │
        ▼
 ┌───────────────────────────────────────────────────────────────────────────────┐
-│                             SCA Verification                                   │
+│                             SCA Verification                                  │
 │                                                                               │
 │  1. Check if SCA is required based on:                                        │
 │     - Payment amount                                                          │
@@ -428,13 +466,13 @@ The payment hub implements Strong Customer Authentication (SCA) as required by r
 │                             Payment Processing                                │
 │                                                                               │
 │  ┌─────────────────────────────┐                                              │
-│  │      ScaResultDTO          │                                              │
-│  │                            │                                              │
-│  │ - success: boolean         │                                              │
-│  │ - method: SMS/EMAIL/APP    │                                              │
-│  │ - challengeId              │                                              │
-│  │ - verificationTimestamp    │                                              │
-│  │ - errorCode/errorMessage   │                                              │
+│  │      ScaResultDTO          │                                               │
+│  │                            │                                               │
+│  │ - success: boolean         │                                               │
+│  │ - method: SMS/EMAIL/APP    │                                               │
+│  │ - challengeId              │                                               │
+│  │ - verificationTimestamp    │                                               │
+│  │ - errorCode/errorMessage   │                                               │
 │  └─────────────────────────────┘                                              │
 │                                                                               │
 │  If SCA successful → Process payment                                          │
@@ -581,6 +619,41 @@ The payment hub prioritizes security:
 - **Compliance**: Adherence to industry standards and regulations
 - **Security Monitoring**: Detection of security events
 - **Incident Response**: Procedures for handling security incidents
+
+## Metrics and Monitoring
+
+The Firefly Core Banking Payment Hub includes comprehensive metrics and monitoring capabilities:
+
+### Metrics Collection
+
+- **Micrometer Integration**: Core metrics collection using Micrometer
+- **Prometheus Export**: Metrics can be exported to Prometheus for visualization and alerting
+- **Standardized Metrics**: Consistent metrics collection across all payment providers
+- **Operation Timing**: Duration of payment operations and SCA operations
+- **Success/Failure Rates**: Success and failure counts for each operation
+- **Method-specific Metrics**: Metrics broken down by authentication method
+- **Biometric Authentication Metrics**: Specific metrics for biometric authentication methods
+
+### Health Monitoring
+
+- **Health Endpoints**: Spring Boot Actuator health endpoints for system health monitoring
+- **Provider Health Checks**: Standardized health checks for all payment providers
+- **Dependency Health Checks**: Monitoring of external dependencies
+- **Response Time Monitoring**: Tracking of response times for health checks
+
+### Logging and Tracing
+
+- **Structured Logging**: Consistent logging format across all components
+- **Contextual Information**: Inclusion of relevant context in log entries
+- **Log Levels**: Appropriate log levels for different types of events
+- **Masked Sensitive Data**: Masking of sensitive information in logs
+
+### Alerting
+
+- **Threshold-based Alerts**: Alerts based on metric thresholds
+- **Anomaly Detection**: Detection of unusual patterns in metrics
+- **Notification Channels**: Multiple channels for alert notifications
+- **Alert Aggregation**: Grouping of related alerts to reduce noise
 
 ## Conclusion
 

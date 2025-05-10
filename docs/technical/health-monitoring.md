@@ -22,13 +22,61 @@ All payment providers implement the `BasePaymentProvider` interface, which inclu
 ```java
 public interface BasePaymentProvider {
     // Other methods...
-    
+
     /**
      * Checks if the payment provider is healthy and operational.
      *
      * @return A Mono emitting true if the provider is healthy, false otherwise
      */
     Mono<Boolean> isHealthy();
+}
+```
+
+### AbstractBasePaymentProvider Implementation
+
+The `AbstractBasePaymentProvider` class provides a standardized implementation of the health check functionality:
+
+```java
+public abstract class AbstractBasePaymentProvider implements BasePaymentProvider {
+    // Other methods...
+
+    @Override
+    public Mono<Boolean> isHealthy() {
+        log.debug("Performing health check for {}", getProviderName());
+
+        Instant start = Instant.now();
+
+        // Default implementation checks if the provider can connect to its dependencies
+        return checkProviderHealth()
+                .doOnSuccess(healthy -> {
+                    Duration duration = Duration.between(start, Instant.now());
+                    log.debug("Health check for {} completed: healthy={}, duration={}ms",
+                            getProviderName(), healthy, duration.toMillis());
+                    recordMetrics("health.check", duration.toMillis(), healthy);
+                })
+                .doOnError(error -> {
+                    Duration duration = Duration.between(start, Instant.now());
+                    log.error("Error during health check for {}: error={}, duration={}ms",
+                            getProviderName(), error.getMessage(), duration.toMillis());
+                    recordMetrics("health.check", duration.toMillis(), false);
+                })
+                .onErrorReturn(false);
+    }
+
+    /**
+     * Checks if the provider is healthy by verifying connectivity to its dependencies.
+     * This method should be overridden by subclasses to implement provider-specific health checks.
+     *
+     * @return A Mono emitting a boolean indicating if the provider is healthy
+     */
+    protected abstract Mono<Boolean> checkProviderHealth();
+
+    /**
+     * Gets the name of the provider for logging and metrics.
+     *
+     * @return The provider name
+     */
+    protected abstract String getProviderName();
 }
 ```
 
@@ -39,7 +87,7 @@ The SCA provider also includes health check capabilities:
 ```java
 public interface ScaProvider {
     // Other methods...
-    
+
     /**
      * Checks if the SCA provider is healthy and operational.
      *
@@ -60,9 +108,9 @@ Monitors the health of all payment providers:
 ```java
 @Component
 public class PaymentProvidersHealthIndicator implements ReactiveHealthIndicator {
-    
+
     private final ProviderRegistry providerRegistry;
-    
+
     @Override
     public Mono<Health> health() {
         return Mono.just(providerRegistry.getAllProviders())
@@ -70,31 +118,52 @@ public class PaymentProvidersHealthIndicator implements ReactiveHealthIndicator 
                     List<Mono<Health>> healthChecks = providers.stream()
                             .map(this::checkProviderHealth)
                             .collect(Collectors.toList());
-                    
+
                     return Flux.merge(healthChecks)
                             .collectList()
                             .map(results -> {
                                 boolean allUp = results.stream()
                                         .allMatch(health -> health.getStatus() == Status.UP);
-                                
+
                                 Health.Builder builder = allUp ? Health.up() : Health.down();
-                                
+
                                 for (int i = 0; i < providers.size(); i++) {
                                     BasePaymentProvider provider = providers.get(i);
                                     Health health = results.get(i);
-                                    
+
                                     builder.withDetail(provider.getClass().getSimpleName(), health);
                                 }
-                                
+
                                 return builder.build();
                             });
                 });
     }
-    
+
     private Mono<Health> checkProviderHealth(BasePaymentProvider provider) {
+        Instant start = Instant.now();
         return provider.isHealthy()
-                .map(healthy -> healthy ? Health.up() : Health.down())
-                .onErrorResume(e -> Mono.just(Health.down(e)))
+                .map(healthy -> {
+                    Duration duration = Duration.between(start, Instant.now());
+
+                    Map<String, Object> details = new HashMap<>();
+                    details.put("status", healthy ? "UP" : "DOWN");
+                    details.put("responseTime", duration.toMillis() + "ms");
+                    details.put("provider", provider.getClass().getSimpleName());
+
+                    return healthy ? Health.up().withDetails(details).build() :
+                                    Health.down().withDetails(details).build();
+                })
+                .onErrorResume(e -> {
+                    Duration duration = Duration.between(start, Instant.now());
+
+                    Map<String, Object> details = new HashMap<>();
+                    details.put("status", "ERROR");
+                    details.put("error", e.getMessage());
+                    details.put("responseTime", duration.toMillis() + "ms");
+                    details.put("provider", provider.getClass().getSimpleName());
+
+                    return Mono.just(Health.down().withDetails(details).build());
+                })
                 .defaultIfEmpty(Health.unknown().build());
     }
 }
@@ -107,9 +176,9 @@ Monitors the health of the SCA provider:
 ```java
 @Component
 public class ScaProviderHealthIndicator implements ReactiveHealthIndicator {
-    
+
     private final ScaProvider scaProvider;
-    
+
     @Override
     public Mono<Health> health() {
         return scaProvider.isHealthy()
@@ -179,16 +248,21 @@ The payment hub exposes a health endpoint at `/actuator/health` that provides th
 
 ## Provider Implementation
 
-Each payment provider implements the `isHealthy()` method to check its operational status:
+Each payment provider extends the `AbstractBasePaymentProvider` class and implements the `checkProviderHealth()` method to perform provider-specific health checks:
 
 ```java
 @Override
-public Mono<Boolean> isHealthy() {
+protected Mono<Boolean> checkProviderHealth() {
     // Check connectivity to external systems
     // Check configuration
     // Check dependencies
-    
+
     return Mono.just(true); // Return health status
+}
+
+@Override
+protected String getProviderName() {
+    return "sepa"; // Return the provider name for logging and metrics
 }
 ```
 
@@ -219,6 +293,47 @@ The health endpoint can be integrated with various monitoring systems:
 - **Grafana**: For visualization and dashboards
 - **Spring Boot Admin**: For centralized monitoring of Spring Boot applications
 - **Kubernetes**: For readiness and liveness probes
+
+## Metrics Collection
+
+In addition to health checks, the payment hub collects detailed metrics using Micrometer:
+
+```java
+public class MetricsUtils {
+
+    private static MeterRegistry meterRegistry;
+
+    /**
+     * Records metrics for a payment operation using Micrometer.
+     */
+    public static void recordPaymentMetrics(String providerName, String operation, long durationMs, boolean success) {
+        // Record operation duration
+        Timer timer = meterRegistry.timer("payment.provider." + providerName + "." + operation);
+        timer.record(durationMs, TimeUnit.MILLISECONDS);
+
+        // Record success/failure count
+        Counter counter = meterRegistry.counter("payment.provider." + providerName + "." + operation +
+            (success ? ".success" : ".failure"));
+        counter.increment();
+    }
+
+    /**
+     * Records metrics for an SCA operation using Micrometer.
+     */
+    public static void recordScaMetrics(String operation, String method, long durationMs, boolean success) {
+        // Record operation duration
+        Timer timer = meterRegistry.timer("sca." + operation + "." + method);
+        timer.record(durationMs, TimeUnit.MILLISECONDS);
+
+        // Record success/failure count
+        Counter counter = meterRegistry.counter("sca." + operation + "." + method +
+            (success ? ".success" : ".failure"));
+        counter.increment();
+    }
+}
+```
+
+These metrics are collected for all payment operations, SCA operations, and health checks, providing detailed insights into the system's performance and health.
 
 ## Security Considerations
 
