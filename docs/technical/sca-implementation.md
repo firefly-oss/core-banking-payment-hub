@@ -14,6 +14,8 @@ The SCA implementation follows these key principles:
 2. **Provider Delegation**: Payment providers can delegate SCA operations to a specialized SCA provider
 3. **Consistent API**: All payment types use the same SCA interfaces and data models
 4. **Extensibility**: The system can be extended with different SCA methods and providers
+5. **Standardization**: All payment providers extend a common abstract base implementation
+6. **Metrics Collection**: Comprehensive metrics are collected for all SCA operations
 
 ## Key Components
 
@@ -41,21 +43,55 @@ public interface BasePaymentProvider {
 }
 ```
 
+### AbstractBasePaymentProvider Implementation
+
+The `AbstractBasePaymentProvider` provides a standardized implementation of the `BasePaymentProvider` interface:
+
+```java
+public abstract class AbstractBasePaymentProvider implements BasePaymentProvider {
+    protected final ScaProvider scaProvider;
+
+    public AbstractBasePaymentProvider(ScaProvider scaProvider) {
+        this.scaProvider = scaProvider;
+    }
+
+    @Override
+    public Mono<ScaResultDTO> triggerSca(String recipientIdentifier, String method, String referenceId) {
+        // Standardized implementation with metrics collection
+    }
+
+    @Override
+    public Mono<ScaResultDTO> validateSca(ScaDTO sca) {
+        // Standardized implementation with metrics collection
+    }
+
+    @Override
+    public Mono<Boolean> isHealthy() {
+        // Standardized implementation with metrics collection
+    }
+
+    protected abstract Mono<Boolean> checkProviderHealth();
+    protected abstract String getProviderName();
+}
+```
+
 ### DefaultScaProvider Implementation
 
 The `DefaultScaProvider` implements the `ScaProvider` interface and provides the core SCA functionality:
 
-- Triggering SCA challenges via different methods (SMS, email, etc.)
-- Validating SCA responses
+- Triggering SCA challenges via different methods (SMS, email, app, biometric)
+- Validating SCA responses including biometric authentication
 - Determining if SCA is required based on risk factors
+- Collecting metrics for all SCA operations
 
 ### Payment Provider Implementations
 
-Each payment provider (SEPA, SWIFT, ACH, etc.) implements the `BasePaymentProvider` interface and can:
+Each payment provider (SEPA, SWIFT, ACH, etc.) extends the `AbstractBasePaymentProvider` and implements its specific provider interface:
 
-1. Use the `ScaProvider` directly for SCA operations
-2. Implement custom SCA logic if needed for specific payment types
-3. Report health status for monitoring
+1. Inherits standardized SCA operations from the abstract base class
+2. Implements provider-specific payment operations
+3. Provides health check implementation
+4. Benefits from consistent error handling and metrics collection
 
 ## SCA Flow
 
@@ -84,7 +120,7 @@ The `ScaDTO` represents the SCA information provided by the client:
 @Data
 @Builder
 public class ScaDTO {
-    private String method;
+    private String method;  // SMS, EMAIL, APP, BIOMETRIC_FINGERPRINT, BIOMETRIC_FACE, BIOMETRIC_VOICE
     private String recipient;
     private String authenticationCode;
     private String challengeId;
@@ -92,6 +128,8 @@ public class ScaDTO {
     private Boolean completed;
     private String challengeTimestamp;
     private String expiryTimestamp;
+    private String biometricData;  // Additional data for biometric authentication
+    private String deviceId;       // Device ID for biometric authentication
 }
 ```
 
@@ -126,6 +164,17 @@ The SCA implementation includes health checks to monitor the operational status:
 - `ScaProviderHealthIndicator`: Monitors the health of the SCA provider
 - `PaymentProvidersHealthIndicator`: Monitors the health of all payment providers, including their SCA capabilities
 
+## Metrics Collection
+
+The SCA implementation includes comprehensive metrics collection using Micrometer:
+
+- **Operation Timing**: Duration of SCA operations (trigger, validate, requirement check)
+- **Success/Failure Rates**: Success and failure counts for each operation
+- **Method-specific Metrics**: Metrics broken down by authentication method
+- **Biometric Authentication Metrics**: Specific metrics for biometric authentication methods
+
+Metrics are exposed through the `/actuator/prometheus` endpoint and can be visualized using tools like Grafana.
+
 ## Configuration
 
 SCA behavior can be configured through application properties:
@@ -138,6 +187,13 @@ payment:
     expiry-minutes: 15
     max-attempts: 3
     threshold-amount: 500.00
+    biometric:
+      enabled: true
+      methods:
+        - BIOMETRIC_FINGERPRINT
+        - BIOMETRIC_FACE
+        - BIOMETRIC_VOICE
+      expiry-minutes: 5  # Shorter expiry for biometric authentication
 ```
 
 ## Testing
@@ -154,3 +210,27 @@ The SCA implementation includes test utilities to simulate SCA challenges and re
 - Phone numbers and other recipient identifiers are masked in logs
 - SCA challenges expire after a configurable time period
 - Failed attempts are limited to prevent brute force attacks
+- Biometric data is never stored or transmitted in plain text
+- Device verification is required for biometric authentication
+- Biometric authentication has stricter security requirements
+
+## Biometric Authentication
+
+The SCA implementation supports the following biometric authentication methods:
+
+- **Fingerprint Authentication**: Uses the device's fingerprint sensor
+- **Facial Recognition**: Uses the device's camera for facial recognition
+- **Voice Recognition**: Uses the device's microphone for voice recognition
+
+Biometric authentication offers several advantages:
+
+- **Improved User Experience**: No need to enter codes manually
+- **Higher Security**: More difficult to forge than traditional methods
+- **Faster Authentication**: Quicker than entering codes
+
+Implementation details:
+
+- Biometric authentication is handled by the client device
+- The server receives only a verification token, not the actual biometric data
+- Additional device verification is performed to prevent spoofing
+- Metrics are collected to monitor the effectiveness of biometric authentication

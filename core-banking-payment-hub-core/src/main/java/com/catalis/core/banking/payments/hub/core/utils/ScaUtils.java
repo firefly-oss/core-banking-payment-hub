@@ -9,10 +9,26 @@ import java.util.UUID;
 
 /**
  * Utility class for Strong Customer Authentication (SCA) related operations.
- * This class provides common functionality used across different payment providers.
+ * This class provides common functionality used across different payment providers,
+ * including support for biometric authentication methods.
  */
 @Slf4j
 public class ScaUtils {
+
+    // List of supported SCA methods
+    public static final String METHOD_SMS = "SMS";
+    public static final String METHOD_EMAIL = "EMAIL";
+    public static final String METHOD_APP = "APP";
+
+    // Biometric authentication methods
+    public static final String METHOD_BIOMETRIC_FINGERPRINT = "BIOMETRIC_FINGERPRINT";
+    public static final String METHOD_BIOMETRIC_FACE = "BIOMETRIC_FACE";
+    public static final String METHOD_BIOMETRIC_VOICE = "BIOMETRIC_VOICE";
+    public static final String METHOD_BIOMETRIC_IRIS = "BIOMETRIC_IRIS";
+    public static final String METHOD_BIOMETRIC_RETINA = "BIOMETRIC_RETINA";
+    public static final String METHOD_BIOMETRIC_PALM = "BIOMETRIC_PALM";
+    public static final String METHOD_BIOMETRIC_VEIN = "BIOMETRIC_VEIN";
+    public static final String METHOD_BIOMETRIC_BEHAVIORAL = "BIOMETRIC_BEHAVIORAL";
 
     /**
      * Validates the provided SCA information.
@@ -100,10 +116,71 @@ public class ScaUtils {
         scaResult.setChallengeId(generateChallengeId());
         scaResult.setVerificationTimestamp(null); // Not verified yet
         scaResult.setAttemptCount(0);
-        scaResult.setMaxAttempts(3);
+
+        // Biometric methods typically have different parameters
+        boolean isBiometric = isBiometricMethod(method);
+        if (isBiometric) {
+            scaResult.setMaxAttempts(1); // Biometric usually only allows one attempt
+            scaResult.setAuthenticationMethod(method);
+        } else {
+            scaResult.setMaxAttempts(3);
+        }
+
         scaResult.setExpired(false);
         scaResult.setExpiryTimestamp(expiryTimestamp);
         scaResult.setSuccess(false); // Not verified yet
         return scaResult;
+    }
+
+    /**
+     * Checks if the specified method is a biometric authentication method.
+     *
+     * @param method The authentication method to check
+     * @return true if the method is a biometric method, false otherwise
+     */
+    public static boolean isBiometricMethod(String method) {
+        if (method == null) {
+            return false;
+        }
+        return method.startsWith("BIOMETRIC_");
+    }
+
+    /**
+     * Gets a user-friendly name for an SCA method.
+     *
+     * @param method The SCA method code
+     * @return A user-friendly name for the method
+     */
+    public static String getMethodDisplayName(String method) {
+        if (method == null) {
+            return "Unknown";
+        }
+
+        switch (method) {
+            case METHOD_SMS:
+                return "SMS";
+            case METHOD_EMAIL:
+                return "Email";
+            case METHOD_APP:
+                return "Mobile App";
+            case METHOD_BIOMETRIC_FINGERPRINT:
+                return "Fingerprint";
+            case METHOD_BIOMETRIC_FACE:
+                return "Facial Recognition";
+            case METHOD_BIOMETRIC_VOICE:
+                return "Voice Recognition";
+            case METHOD_BIOMETRIC_IRIS:
+                return "Iris Scan";
+            case METHOD_BIOMETRIC_RETINA:
+                return "Retina Scan";
+            case METHOD_BIOMETRIC_PALM:
+                return "Palm Print";
+            case METHOD_BIOMETRIC_VEIN:
+                return "Vein Pattern";
+            case METHOD_BIOMETRIC_BEHAVIORAL:
+                return "Behavioral Biometrics";
+            default:
+                return method;
+        }
     }
 }
