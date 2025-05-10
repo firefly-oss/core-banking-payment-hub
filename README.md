@@ -465,7 +465,7 @@ Example SCA information with biometric authentication:
 
 To build and run the Firefly Core Banking Payment Hub, you need:
 
-- Java 17 or later
+- Java 21 or later
 - Maven 3.6 or later
 - Git
 - Docker (optional, for containerized deployment)
