@@ -13,7 +13,7 @@ import reactor.core.publisher.Mono;
  * Implementations of this interface will handle ACH payment processing
  * for US bank transfers.
  */
-public interface AchPaymentProvider {
+public interface AchPaymentProvider extends BasePaymentProvider {
 
     /**
      * Simulates an ACH payment without actual execution.

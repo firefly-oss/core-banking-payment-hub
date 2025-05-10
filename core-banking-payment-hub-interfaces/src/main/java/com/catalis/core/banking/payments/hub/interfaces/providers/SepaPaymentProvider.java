@@ -14,7 +14,7 @@ import reactor.core.publisher.Mono;
  * Implementations of this interface will handle SEPA payment processing
  * for different payment processors (e.g., Treezor, Iberpay).
  */
-public interface SepaPaymentProvider {
+public interface SepaPaymentProvider extends BasePaymentProvider {
 
     /**
      * Simulates a SEPA payment without actual execution.

@@ -12,7 +12,7 @@ import reactor.core.publisher.Mono;
  * Provider interface for TARGET2 payment operations.
  * Implementations of this interface will handle TARGET2 payment processing.
  */
-public interface Target2PaymentProvider {
+public interface Target2PaymentProvider extends BasePaymentProvider {
 
     /**
      * Simulates a TARGET2 payment without actual execution.

@@ -12,7 +12,7 @@ import reactor.core.publisher.Mono;
  * Provider interface for EBA STEP2 payment operations.
  * Implementations of this interface will handle EBA STEP2 payment processing.
  */
-public interface EbaStep2PaymentProvider {
+public interface EbaStep2PaymentProvider extends BasePaymentProvider {
 
     /**
      * Simulates an EBA STEP2 payment without actual execution.

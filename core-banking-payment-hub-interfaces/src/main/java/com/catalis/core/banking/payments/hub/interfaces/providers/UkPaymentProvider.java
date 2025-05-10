@@ -15,7 +15,7 @@ import reactor.core.publisher.Mono;
  * Implementations of this interface will handle UK payment processing
  * for different payment types (FPS, BACS, CHAPS).
  */
-public interface UkPaymentProvider {
+public interface UkPaymentProvider extends BasePaymentProvider {
 
     /**
      * Simulates a UK Faster Payment without actual execution.

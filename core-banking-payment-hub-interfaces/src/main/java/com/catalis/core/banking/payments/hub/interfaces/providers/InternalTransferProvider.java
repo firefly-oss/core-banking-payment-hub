@@ -13,7 +13,7 @@ import reactor.core.publisher.Mono;
  * Implementations of this interface will handle transfers between accounts
  * within the core banking system.
  */
-public interface InternalTransferProvider {
+public interface InternalTransferProvider extends BasePaymentProvider {
 
     /**
      * Simulates an internal transfer without actual execution.

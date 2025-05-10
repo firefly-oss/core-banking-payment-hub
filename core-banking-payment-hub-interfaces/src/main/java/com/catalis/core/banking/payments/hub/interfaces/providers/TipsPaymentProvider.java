@@ -12,7 +12,7 @@ import reactor.core.publisher.Mono;
  * Provider interface for TIPS (TARGET Instant Payment Settlement) payment operations.
  * Implementations of this interface will handle TIPS payment processing.
  */
-public interface TipsPaymentProvider {
+public interface TipsPaymentProvider extends BasePaymentProvider {
 
     /**
      * Simulates a TIPS payment without actual execution.

@@ -14,7 +14,7 @@ import reactor.core.publisher.Mono;
  * Implementations of this interface will handle SWIFT payment processing
  * for different payment processors (e.g., Treezor, Iberpay).
  */
-public interface SwiftPaymentProvider {
+public interface SwiftPaymentProvider extends BasePaymentProvider {
 
     /**
      * Simulates a SWIFT payment without actual execution.
