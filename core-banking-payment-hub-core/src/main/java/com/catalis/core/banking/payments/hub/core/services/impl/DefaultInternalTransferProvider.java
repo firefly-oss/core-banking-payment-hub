@@ -14,6 +14,8 @@ import com.catalis.core.banking.payments.hub.interfaces.enums.PaymentOperationTy
 import com.catalis.core.banking.payments.hub.interfaces.enums.PaymentProviderType;
 import com.catalis.core.banking.payments.hub.interfaces.enums.PaymentStatus;
 import com.catalis.core.banking.payments.hub.interfaces.providers.InternalTransferProvider;
+import com.catalis.core.banking.payments.hub.interfaces.providers.ScaProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -30,6 +32,13 @@ import java.util.UUID;
  */
 @Component
 public class DefaultInternalTransferProvider implements InternalTransferProvider {
+
+    private final ScaProvider scaProvider;
+
+    @Autowired
+    public DefaultInternalTransferProvider(ScaProvider scaProvider) {
+        this.scaProvider = scaProvider;
+    }
 
     private static final Logger log = LoggerFactory.getLogger(DefaultInternalTransferProvider.class);
 
@@ -300,5 +309,46 @@ public class DefaultInternalTransferProvider implements InternalTransferProvider
         }
 
         return Mono.just(result);
+    }
+
+    /**
+     * Masks a phone number for privacy, showing only the last 4 digits.
+     *
+     * @param phoneNumber The phone number to mask
+     * @return The masked phone number
+     */
+    private String maskPhoneNumber(String phoneNumber) {
+        if (phoneNumber == null || phoneNumber.length() <= 4) {
+            return phoneNumber;
+        }
+        return "*****" + phoneNumber.substring(phoneNumber.length() - 4);
+    }
+
+    @Override
+    public Mono<ScaResultDTO> triggerSca(String recipientIdentifier, String method, String referenceId) {
+        log.info("Triggering SCA for internal transfer: recipient={}, method={}, reference={}",
+                maskPhoneNumber(recipientIdentifier), method, referenceId);
+
+        // Delegate to the SCA provider
+        return scaProvider.triggerSca(recipientIdentifier, method, referenceId);
+    }
+
+    @Override
+    public Mono<ScaResultDTO> validateSca(ScaDTO sca) {
+        log.info("Validating SCA for internal transfer: challengeId={}", sca.getChallengeId());
+
+        // Delegate to the SCA provider
+        return scaProvider.validateSca(sca);
+    }
+
+    @Override
+    public Mono<Boolean> isHealthy() {
+        // Perform health check for internal transfer provider
+        // This could include checking connectivity to internal account systems
+        log.debug("Performing health check for internal transfer provider");
+
+        // For demonstration, we'll return a healthy status
+        // In a real implementation, this would check connectivity to internal systems
+        return Mono.just(true);
     }
 }

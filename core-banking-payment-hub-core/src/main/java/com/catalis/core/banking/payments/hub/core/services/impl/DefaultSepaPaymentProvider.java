@@ -1,5 +1,8 @@
 package com.catalis.core.banking.payments.hub.core.services.impl;
 
+import com.catalis.core.banking.payments.hub.interfaces.providers.ScaProvider;
+import org.springframework.beans.factory.annotation.Autowired;
+
 import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentCancellationResultDTO;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentExecutionResultDTO;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentScheduleResultDTO;
@@ -28,6 +31,13 @@ import java.util.UUID;
  */
 @Component
 public class DefaultSepaPaymentProvider implements SepaPaymentProvider {
+
+    private final ScaProvider scaProvider;
+
+    @Autowired
+    public DefaultSepaPaymentProvider(ScaProvider scaProvider) {
+        this.scaProvider = scaProvider;
+    }
 
     private static final Logger log = LoggerFactory.getLogger(DefaultSepaPaymentProvider.class);
 
@@ -88,7 +98,7 @@ public class DefaultSepaPaymentProvider implements SepaPaymentProvider {
 
             // If SCA code is already provided in the request, validate it
             if (request.getSca() != null && request.getSca().getAuthenticationCode() != null) {
-                ScaResultDTO validationResult = validateSca(request.getSca());
+                ScaResultDTO validationResult = validateScaSync(request.getSca());
                 result.setScaResult(validationResult);
                 result.setScaCompleted(validationResult.isSuccess());
             }
@@ -136,7 +146,7 @@ public class DefaultSepaPaymentProvider implements SepaPaymentProvider {
                 return Mono.just(result);
             }
 
-            ScaResultDTO scaResult = validateSca(request.getSca());
+            ScaResultDTO scaResult = validateScaSync(request.getSca());
             result.setScaResult(scaResult);
             result.setScaCompleted(scaResult.isSuccess());
 
@@ -216,7 +226,7 @@ public class DefaultSepaPaymentProvider implements SepaPaymentProvider {
 
             // If SCA code is already provided in the request, validate it
             if (request.getSca() != null && request.getSca().getAuthenticationCode() != null) {
-                ScaResultDTO validationResult = validateSca(request.getSca());
+                ScaResultDTO validationResult = validateScaSync(request.getSca());
                 result.setScaResult(validationResult);
                 result.setScaCompleted(validationResult.isSuccess());
             }
@@ -263,7 +273,7 @@ public class DefaultSepaPaymentProvider implements SepaPaymentProvider {
                 return Mono.just(result);
             }
 
-            ScaResultDTO scaResult = validateSca(request.getSca());
+            ScaResultDTO scaResult = validateScaSync(request.getSca());
             result.setScaResult(scaResult);
             result.setScaCompleted(scaResult.isSuccess());
 
@@ -325,7 +335,7 @@ public class DefaultSepaPaymentProvider implements SepaPaymentProvider {
                 return Mono.just(result);
             }
 
-            ScaResultDTO scaResult = validateSca(request.getPaymentRequest().getSca());
+            ScaResultDTO scaResult = validateScaSync(request.getPaymentRequest().getSca());
             result.setScaResult(scaResult);
             result.setScaCompleted(scaResult.isSuccess());
 
@@ -388,41 +398,15 @@ public class DefaultSepaPaymentProvider implements SepaPaymentProvider {
 
     /**
      * Validates the provided SCA information.
+     * This is a synchronous wrapper around the reactive validateSca method.
      *
      * @param sca The SCA information to validate
      * @return The validation result
      */
-    private ScaResultDTO validateSca(ScaDTO sca) {
-        // In a real implementation, this would validate the SCA against a backend system
-        // For simulation, we'll accept a specific code or generate random success/failure
-
-        ScaResultDTO result = new ScaResultDTO();
-        result.setMethod(sca.getMethod());
-        result.setChallengeId(sca.getChallengeId() != null ? sca.getChallengeId() : "CHL-" + UUID.randomUUID().toString().substring(0, 8));
-        result.setVerificationTimestamp(LocalDateTime.now());
-        result.setAttemptCount(1);
-        result.setMaxAttempts(3);
-        result.setExpired(false);
-        result.setExpiryTimestamp(LocalDateTime.now().plusMinutes(15));
-
-        // For testing, accept "123456" as a valid code
-        if (sca.getAuthenticationCode() != null && "123456".equals(sca.getAuthenticationCode())) {
-            result.setSuccess(true);
-        } else if (sca.getAuthenticationCode() == null) {
-            result.setSuccess(false);
-            result.setErrorCode("SCA_CODE_MISSING");
-            result.setErrorMessage("Authentication code is required");
-        } else {
-            // Random success/failure for other codes
-            boolean success = Math.random() > 0.3; // 70% success rate
-            result.setSuccess(success);
-            if (!success) {
-                result.setErrorCode("SCA_INVALID_CODE");
-                result.setErrorMessage("Invalid authentication code");
-            }
-        }
-
-        return result;
+    private ScaResultDTO validateScaSync(ScaDTO sca) {
+        // Call the reactive method and block to get the result
+        // In a real implementation, we would avoid blocking and use reactive patterns throughout
+        return scaProvider.validateSca(sca).block();
     }
 
     /**
@@ -436,6 +420,34 @@ public class DefaultSepaPaymentProvider implements SepaPaymentProvider {
             return phoneNumber;
         }
         return "*****" + phoneNumber.substring(phoneNumber.length() - 4);
+    }
+
+    @Override
+    public Mono<ScaResultDTO> triggerSca(String recipientIdentifier, String method, String referenceId) {
+        log.info("Triggering SCA for SEPA payment: recipient={}, method={}, reference={}",
+                maskPhoneNumber(recipientIdentifier), method, referenceId);
+
+        // Delegate to the SCA provider
+        return scaProvider.triggerSca(recipientIdentifier, method, referenceId);
+    }
+
+    @Override
+    public Mono<ScaResultDTO> validateSca(ScaDTO sca) {
+        log.info("Validating SCA for SEPA payment: challengeId={}", sca.getChallengeId());
+
+        // Delegate to the SCA provider
+        return scaProvider.validateSca(sca);
+    }
+
+    @Override
+    public Mono<Boolean> isHealthy() {
+        // Perform health check for SEPA payment provider
+        // This could include checking connectivity to external SEPA systems
+        log.debug("Performing health check for SEPA payment provider");
+
+        // For demonstration, we'll return a healthy status
+        // In a real implementation, this would check connectivity to SEPA systems
+        return Mono.just(true);
     }
 
     /**

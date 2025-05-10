@@ -15,9 +15,11 @@ import com.catalis.core.banking.payments.hub.interfaces.enums.PaymentProviderTyp
 import com.catalis.core.banking.payments.hub.interfaces.enums.PaymentStatus;
 import com.catalis.core.banking.payments.hub.interfaces.enums.PaymentType;
 import com.catalis.core.banking.payments.hub.interfaces.providers.EbaStep2PaymentProvider;
+import com.catalis.core.banking.payments.hub.interfaces.providers.ScaProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
@@ -27,10 +29,16 @@ import java.util.UUID;
 
 /**
  * Default implementation of the EbaStep2PaymentProvider interface.
- * Provides simulation functionality for EBA STEP2 payments.
  */
-@Service
+@Component
 public class DefaultEbaStep2PaymentProvider implements EbaStep2PaymentProvider {
+
+    private final ScaProvider scaProvider;
+
+    @Autowired
+    public DefaultEbaStep2PaymentProvider(ScaProvider scaProvider) {
+        this.scaProvider = scaProvider;
+    }
 
     private static final Logger log = LoggerFactory.getLogger(DefaultEbaStep2PaymentProvider.class);
 
@@ -41,24 +49,24 @@ public class DefaultEbaStep2PaymentProvider implements EbaStep2PaymentProvider {
         PaymentSimulationResultDTO result = new PaymentSimulationResultDTO();
         result.setPaymentId(generatePaymentId());
         result.setRequestId(request.getRequestId());
-        result.setPaymentType(PaymentType.EBA_STEP2);
+        result.setPaymentType(request.getPaymentType());
         result.setOperationType(PaymentOperationType.SIMULATE);
         result.setStatus(PaymentStatus.VALIDATED);
         result.setProvider(PaymentProviderType.EBA_STEP2_PROVIDER);
         result.setTimestamp(LocalDateTime.now());
         result.setSuccess(true);
-        result.setEstimatedExecutionDate(LocalDate.now());
-        result.setEstimatedSettlementDate(LocalDate.now().plusDays(1));
-        result.setEstimatedFee(new BigDecimal("0.50"));
+        result.setEstimatedExecutionDate(request.getRequestedExecutionDate() != null ?
+                request.getRequestedExecutionDate() : LocalDate.now());
+        result.setEstimatedSettlementDate(result.getEstimatedExecutionDate().plusDays(1));
+        result.setEstimatedFee(new BigDecimal("2.50"));
         result.setFeeCurrency(request.getCurrency());
-        result.setEstimatedExchangeRate(null); // No exchange rate for euro payments
         result.setFeasible(true);
+        result.setSimulationReference("SIM-" + UUID.randomUUID().toString().substring(0, 8));
 
         // Handle SCA (Strong Customer Authentication)
         boolean scaRequired = isScaRequired(request);
         result.setScaRequired(scaRequired);
         result.setScaCompleted(false); // Initially not completed
-        result.setSimulationReference("SIM-" + UUID.randomUUID().toString().substring(0, 8));
 
         if (scaRequired) {
             // Always trigger SCA delivery during simulation if required
@@ -76,21 +84,12 @@ public class DefaultEbaStep2PaymentProvider implements EbaStep2PaymentProvider {
             result.setScaExpiryTimestamp(LocalDateTime.now().plusMinutes(15)); // SCA code valid for 15 minutes
 
             // Create SCA result with challenge information
-            ScaResultDTO scaResult = new ScaResultDTO();
-            scaResult.setMethod(scaMethod);
-            scaResult.setChallengeId("CHL-" + UUID.randomUUID().toString().substring(0, 8));
-            scaResult.setVerificationTimestamp(null); // Not verified yet
-            scaResult.setAttemptCount(0);
-            scaResult.setMaxAttempts(3);
-            scaResult.setExpired(false);
-            scaResult.setExpiryTimestamp(result.getScaExpiryTimestamp());
-            scaResult.setSuccess(false); // Not verified yet
-
+            ScaResultDTO scaResult = ScaUtils.createDefaultScaResult(scaMethod, result.getScaExpiryTimestamp());
             result.setScaResult(scaResult);
 
             // If SCA code is already provided in the request, validate it
             if (request.getSca() != null && request.getSca().getAuthenticationCode() != null) {
-                ScaResultDTO validationResult = validateSca(request.getSca());
+                ScaResultDTO validationResult = validateScaSync(request.getSca());
                 result.setScaResult(validationResult);
                 result.setScaCompleted(validationResult.isSuccess());
             }
@@ -109,7 +108,7 @@ public class DefaultEbaStep2PaymentProvider implements EbaStep2PaymentProvider {
         PaymentExecutionResultDTO result = new PaymentExecutionResultDTO();
         result.setPaymentId(generatePaymentId());
         result.setRequestId(request.getRequestId());
-        result.setPaymentType(PaymentType.EBA_STEP2);
+        result.setPaymentType(request.getPaymentType());
         result.setOperationType(PaymentOperationType.EXECUTE);
         result.setProvider(PaymentProviderType.EBA_STEP2_PROVIDER);
         result.setTimestamp(LocalDateTime.now());
@@ -129,18 +128,21 @@ public class DefaultEbaStep2PaymentProvider implements EbaStep2PaymentProvider {
             }
 
             if (request.getSca() == null) {
+                // SCA is required but not provided
                 result.setSuccess(false);
                 result.setStatus(PaymentStatus.REJECTED);
                 result.setErrorCode("SCA_REQUIRED");
                 result.setErrorMessage("Strong Customer Authentication is required for this payment");
+                result.setRequiresAuthorization(true);
                 return Mono.just(result);
             }
 
-            ScaResultDTO scaResult = validateSca(request.getSca());
+            ScaResultDTO scaResult = validateScaSync(request.getSca());
             result.setScaResult(scaResult);
             result.setScaCompleted(scaResult.isSuccess());
 
             if (!scaResult.isSuccess()) {
+                // SCA validation failed
                 result.setSuccess(false);
                 result.setStatus(PaymentStatus.REJECTED);
                 result.setErrorCode("SCA_FAILED");
@@ -154,11 +156,10 @@ public class DefaultEbaStep2PaymentProvider implements EbaStep2PaymentProvider {
         result.setStatus(PaymentStatus.COMPLETED);
         result.setExecutionDate(LocalDate.now());
         result.setExpectedSettlementDate(LocalDate.now().plusDays(1));
-        result.setTransactionReference("STEP2-" + UUID.randomUUID().toString().substring(0, 8));
-        result.setClearingSystemReference("STEP2-" + UUID.randomUUID().toString().substring(0, 8));
+        result.setTransactionReference("TRN-" + UUID.randomUUID().toString().substring(0, 8));
+        result.setClearingSystemReference("CSR-" + UUID.randomUUID().toString().substring(0, 8));
         result.setReceivedTimestamp(LocalDateTime.now());
         result.setRequiresAuthorization(false);
-        result.setProviderReference(request.getEndToEndId());
 
         return Mono.just(result);
     }
@@ -166,14 +167,15 @@ public class DefaultEbaStep2PaymentProvider implements EbaStep2PaymentProvider {
     @Override
     @Deprecated
     public Mono<PaymentCancellationResultDTO> cancel(String paymentId, String reason) {
-        log.info("Cancelling EBA STEP2 payment (deprecated method): {}, reason: {}", paymentId, reason);
+        log.info("Cancelling EBA STEP2 payment (deprecated method): paymentId={}, reason={}", paymentId, reason);
 
-        // Create a cancellation request and delegate to the new method
+        // Create a cancellation request DTO
         EbaStep2CancellationRequestDTO request = new EbaStep2CancellationRequestDTO();
         request.setPaymentId(paymentId);
         request.setCancellationReason(reason);
         request.setPaymentType(PaymentType.EBA_STEP2);
 
+        // Delegate to the new method
         return cancel(request);
     }
 
@@ -181,43 +183,72 @@ public class DefaultEbaStep2PaymentProvider implements EbaStep2PaymentProvider {
     public Mono<PaymentCancellationResultDTO> cancel(EbaStep2CancellationRequestDTO request) {
         log.info("Cancelling EBA STEP2 payment: {}", request);
 
-        // Create a default cancellation result
+        PaymentCancellationResultDTO result = new PaymentCancellationResultDTO();
+        result.setPaymentId(request.getPaymentId());
+        result.setRequestId(UUID.randomUUID().toString());
+        result.setPaymentType(request.getPaymentType());
+        result.setOperationType(PaymentOperationType.CANCEL);
+        result.setProvider(PaymentProviderType.EBA_STEP2_PROVIDER);
+        result.setTimestamp(LocalDateTime.now());
+
+        // For cancellation, we'll require SCA for high-value payments
         boolean scaRequired = isHighValuePayment(request.getPaymentId());
-        PaymentCancellationResultDTO result = CancellationUtils.createCancellationResult(
-                request.getPaymentId(),
-                request.getPaymentType(),
-                PaymentProviderType.EBA_STEP2_PROVIDER,
-                request.getCancellationReason(),
-                scaRequired);
+        result.setScaRequired(scaRequired);
+        result.setScaCompleted(false); // Initially not completed
 
-        // Check if a simulation reference is provided
-        String simulationReference = request.getSimulationReference();
-        if (simulationReference != null && !simulationReference.isEmpty()) {
-            log.info("Using simulation reference for SCA validation in cancellation: {}", simulationReference);
-            // In a real implementation, we would look up the simulation details using the reference
-            // and validate the SCA code against the previously delivered code
-        }
-
-        // Validate SCA if required
         if (scaRequired) {
-            boolean scaValid = CancellationUtils.validateScaForCancellation(result, request.getSca());
-            if (!scaValid) {
+            if (request.getSca() == null) {
+                // SCA is required but not provided
+                result.setSuccess(false);
+                result.setStatus(PaymentStatus.REJECTED);
+                result.setErrorCode("SCA_REQUIRED");
+                result.setErrorMessage("Strong Customer Authentication is required to cancel this payment");
+                return Mono.just(result);
+            }
+
+            ScaResultDTO scaResult = validateScaSync(request.getSca());
+            result.setScaResult(scaResult);
+            result.setScaCompleted(scaResult.isSuccess());
+
+            if (!scaResult.isSuccess()) {
+                // SCA validation failed
+                result.setSuccess(false);
+                result.setStatus(PaymentStatus.REJECTED);
+                result.setErrorCode("SCA_FAILED");
+                result.setErrorMessage("Strong Customer Authentication failed: " + scaResult.getMessage());
                 return Mono.just(result);
             }
         }
 
-        // Check if the payment is still cancellable (in a real implementation, this would check the payment status)
-        boolean isCancellable = true;
+        // If we get here, either SCA is not required or it passed validation
+        result.setSuccess(true);
+        result.setStatus(PaymentStatus.CANCELLED);
+        result.setCancellationDate(LocalDate.now());
+        result.setCancellationReason(request.getCancellationReason());
+        result.setFullyCancelled(true);
+        result.setFundsReturned(true);
+        result.setCancellationReference("REF-" + UUID.randomUUID().toString().substring(0, 8));
 
-        if (isCancellable) {
-            result.setSuccess(true);
-            result.setStatus(PaymentStatus.CANCELLED);
-            result.setCancellationDate(LocalDate.now());
-        } else {
-            result.setSuccess(false);
-            result.setStatus(PaymentStatus.REJECTED);
-            result.setErrorCode("CANCELLATION_NOT_POSSIBLE");
-            result.setErrorMessage("The payment cannot be cancelled at this stage");
+        return Mono.just(result);
+    }
+
+    @Override
+    public Mono<PaymentSimulationResultDTO> simulateCancellation(EbaStep2CancellationRequestDTO request) {
+        log.info("Simulating EBA STEP2 payment cancellation: {}", request);
+
+        // Create a default cancellation simulation result
+        boolean scaRequired = isHighValuePayment(request.getPaymentId());
+        PaymentSimulationResultDTO result = CancellationUtils.createCancellationSimulationResult(
+                request.getPaymentId(),
+                request.getPaymentType(),
+                PaymentProviderType.EBA_STEP2_PROVIDER,
+                "EUR",
+                scaRequired,
+                true); // EBA STEP2 payments are generally cancellable
+
+        // Set up SCA delivery if required
+        if (scaRequired) {
+            CancellationUtils.setupScaDelivery(result, request.getSca(), getDefaultPhoneNumber(request));
         }
 
         return Mono.just(result);
@@ -230,7 +261,7 @@ public class DefaultEbaStep2PaymentProvider implements EbaStep2PaymentProvider {
         PaymentScheduleResultDTO result = new PaymentScheduleResultDTO();
         result.setPaymentId(generatePaymentId());
         result.setRequestId(request.getRequestId());
-        result.setPaymentType(PaymentType.EBA_STEP2);
+        result.setPaymentType(request.getPaymentType());
         result.setOperationType(PaymentOperationType.SCHEDULE);
         result.setProvider(PaymentProviderType.EBA_STEP2_PROVIDER);
         result.setTimestamp(LocalDateTime.now());
@@ -240,20 +271,30 @@ public class DefaultEbaStep2PaymentProvider implements EbaStep2PaymentProvider {
         result.setScaRequired(scaRequired);
         result.setScaCompleted(false); // Initially not completed
 
+        // Check if a simulation reference is provided
+        String simulationReference = request.getSimulationReference();
+        if (simulationReference != null && !simulationReference.isEmpty()) {
+            log.info("Using simulation reference for SCA validation in scheduling: {}", simulationReference);
+            // In a real implementation, we would look up the simulation details using the reference
+            // and validate the SCA code against the previously delivered code
+        }
+
         if (scaRequired) {
             if (request.getSca() == null) {
+                // SCA is required but not provided
                 result.setSuccess(false);
                 result.setStatus(PaymentStatus.REJECTED);
                 result.setErrorCode("SCA_REQUIRED");
-                result.setErrorMessage("Strong Customer Authentication is required for this payment");
+                result.setErrorMessage("Strong Customer Authentication is required to schedule this payment");
                 return Mono.just(result);
             }
 
-            ScaResultDTO scaResult = validateSca(request.getSca());
+            ScaResultDTO scaResult = validateScaSync(request.getSca());
             result.setScaResult(scaResult);
             result.setScaCompleted(scaResult.isSuccess());
 
             if (!scaResult.isSuccess()) {
+                // SCA validation failed
                 result.setSuccess(false);
                 result.setStatus(PaymentStatus.REJECTED);
                 result.setErrorCode("SCA_FAILED");
@@ -267,7 +308,7 @@ public class DefaultEbaStep2PaymentProvider implements EbaStep2PaymentProvider {
         result.setStatus(PaymentStatus.SCHEDULED);
         result.setScheduledExecutionDate(LocalDate.parse(executionDate));
         result.setExpectedSettlementDate(LocalDate.parse(executionDate).plusDays(1));
-        result.setTransactionReference("STEP2-" + UUID.randomUUID().toString().substring(0, 8));
+        result.setTransactionReference("SCH-" + UUID.randomUUID().toString().substring(0, 8));
         result.setRequiresAuthorization(false);
 
         return Mono.just(result);
@@ -279,61 +320,49 @@ public class DefaultEbaStep2PaymentProvider implements EbaStep2PaymentProvider {
      * @return A unique payment ID
      */
     private String generatePaymentId() {
-        return "STEP2-" + UUID.randomUUID().toString();
+        return "PAY-" + UUID.randomUUID().toString().substring(0, 8);
     }
 
     /**
-     * Determines if Strong Customer Authentication (SCA) is required for the payment.
+     * Determines if Strong Customer Authentication (SCA) is required for a payment.
      *
      * @param request The payment request
      * @return true if SCA is required, false otherwise
      */
     private boolean isScaRequired(EbaStep2PaymentRequestDTO request) {
-        // In a real implementation, this would check various factors like payment amount, risk, etc.
-        // For this simulation, we'll require SCA for all payments
-        return true;
+        // Implement SCA requirement logic based on various factors
+        // For example, require SCA for payments above a certain amount
+        if (request.getAmount().compareTo(new BigDecimal("30")) > 0) {
+            return true;
+        }
+
+        // For simulation purposes, we'll require SCA for 50% of payments randomly
+        return Math.random() > 0.5;
     }
 
     /**
-     * Validates the Strong Customer Authentication (SCA) data.
+     * Determines if a payment is considered high-value based on its ID.
+     * In a real implementation, this would look up the payment details.
      *
-     * @param sca The SCA data to validate
-     * @return The result of the SCA validation
+     * @param paymentId The payment ID
+     * @return true if it's a high-value payment requiring SCA for cancellation
      */
-    private ScaResultDTO validateSca(ScaDTO sca) {
-        // In a real implementation, this would validate the SCA against a backend system
-        // For simulation, we'll accept a specific code or generate random success/failure
+    private boolean isHighValuePayment(String paymentId) {
+        // For simulation purposes, we'll require SCA for 50% of cancellations randomly
+        return Math.random() > 0.5;
+    }
 
-        ScaResultDTO result = new ScaResultDTO();
-        result.setMethod(sca.getMethod());
-        result.setChallengeId(sca.getChallengeId() != null ? sca.getChallengeId() : "CHL-" + UUID.randomUUID().toString().substring(0, 8));
-        result.setVerificationTimestamp(LocalDateTime.now());
-        result.setAttemptCount(1);
-        result.setMaxAttempts(3);
-        result.setExpired(false);
-        result.setExpiryTimestamp(LocalDateTime.now().plusMinutes(15));
-
-        // For testing, accept "123456" as a valid code
-        if (sca.getAuthenticationCode() != null && "123456".equals(sca.getAuthenticationCode())) {
-            result.setSuccess(true);
-            result.setMessage("SCA validation successful");
-        } else if (sca.getAuthenticationCode() == null) {
-            result.setSuccess(false);
-            result.setErrorCode("SCA_CODE_MISSING");
-            result.setErrorMessage("Authentication code is required");
-        } else {
-            // Random success/failure for other codes
-            boolean success = Math.random() > 0.3; // 70% success rate
-            result.setSuccess(success);
-            if (success) {
-                result.setMessage("SCA validation successful");
-            } else {
-                result.setErrorCode("SCA_INVALID_CODE");
-                result.setErrorMessage("Invalid authentication code");
-            }
-        }
-
-        return result;
+    /**
+     * Validates the provided SCA information.
+     * This is a synchronous wrapper around the reactive validateSca method.
+     *
+     * @param sca The SCA information to validate
+     * @return The validation result
+     */
+    private ScaResultDTO validateScaSync(ScaDTO sca) {
+        // Call the reactive method and block to get the result
+        // In a real implementation, we would avoid blocking and use reactive patterns throughout
+        return scaProvider.validateSca(sca).block();
     }
 
     /**
@@ -359,40 +388,34 @@ public class DefaultEbaStep2PaymentProvider implements EbaStep2PaymentProvider {
     private String getDefaultPhoneNumber(Object request) {
         // In a real implementation, this would look up the customer's phone number
         // For simulation, we'll return a dummy phone number
-        return "+33123456789";
-    }
-
-    /**
-     * Determines if a payment is considered high-value based on its ID.
-     * In a real implementation, this would look up the payment details.
-     *
-     * @param paymentId The payment ID
-     * @return true if it's a high-value payment requiring SCA for cancellation
-     */
-    private boolean isHighValuePayment(String paymentId) {
-        // For simulation purposes, we'll require SCA for 50% of cancellations randomly
-        return Math.random() > 0.5;
+        return "+1234567890";
     }
 
     @Override
-    public Mono<PaymentSimulationResultDTO> simulateCancellation(EbaStep2CancellationRequestDTO request) {
-        log.info("Simulating EBA STEP2 payment cancellation: {}", request);
+    public Mono<ScaResultDTO> triggerSca(String recipientIdentifier, String method, String referenceId) {
+        log.info("Triggering SCA for EBA STEP2 payment: recipient={}, method={}, reference={}",
+                maskPhoneNumber(recipientIdentifier), method, referenceId);
 
-        // Create a default cancellation simulation result
-        boolean scaRequired = isHighValuePayment(request.getPaymentId());
-        PaymentSimulationResultDTO result = CancellationUtils.createCancellationSimulationResult(
-                request.getPaymentId(),
-                request.getPaymentType(),
-                PaymentProviderType.EBA_STEP2_PROVIDER,
-                "EUR",
-                scaRequired,
-                true); // EBA STEP2 payments are generally cancellable
+        // Delegate to the SCA provider
+        return scaProvider.triggerSca(recipientIdentifier, method, referenceId);
+    }
 
-        // Set up SCA delivery if required
-        if (scaRequired) {
-            CancellationUtils.setupScaDelivery(result, request.getSca(), getDefaultPhoneNumber(request));
-        }
+    @Override
+    public Mono<ScaResultDTO> validateSca(ScaDTO sca) {
+        log.info("Validating SCA for EBA STEP2 payment: challengeId={}", sca.getChallengeId());
 
-        return Mono.just(result);
+        // Delegate to the SCA provider
+        return scaProvider.validateSca(sca);
+    }
+
+    @Override
+    public Mono<Boolean> isHealthy() {
+        // Perform health check for EBA STEP2 payment provider
+        // This could include checking connectivity to external systems
+        log.debug("Performing health check for EBA STEP2 payment provider");
+
+        // For demonstration, we'll return a healthy status
+        // In a real implementation, this would check connectivity to systems
+        return Mono.just(true);
     }
 }

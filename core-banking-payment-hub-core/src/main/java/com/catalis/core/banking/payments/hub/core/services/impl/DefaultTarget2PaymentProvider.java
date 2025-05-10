@@ -15,9 +15,11 @@ import com.catalis.core.banking.payments.hub.interfaces.enums.PaymentProviderTyp
 import com.catalis.core.banking.payments.hub.interfaces.enums.PaymentStatus;
 import com.catalis.core.banking.payments.hub.interfaces.enums.PaymentType;
 import com.catalis.core.banking.payments.hub.interfaces.providers.Target2PaymentProvider;
+import com.catalis.core.banking.payments.hub.interfaces.providers.ScaProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
@@ -27,10 +29,16 @@ import java.util.UUID;
 
 /**
  * Default implementation of the Target2PaymentProvider interface.
- * Provides simulation functionality for TARGET2 payments.
  */
-@Service
+@Component
 public class DefaultTarget2PaymentProvider implements Target2PaymentProvider {
+
+    private final ScaProvider scaProvider;
+
+    @Autowired
+    public DefaultTarget2PaymentProvider(ScaProvider scaProvider) {
+        this.scaProvider = scaProvider;
+    }
 
     private static final Logger log = LoggerFactory.getLogger(DefaultTarget2PaymentProvider.class);
 
@@ -41,24 +49,24 @@ public class DefaultTarget2PaymentProvider implements Target2PaymentProvider {
         PaymentSimulationResultDTO result = new PaymentSimulationResultDTO();
         result.setPaymentId(generatePaymentId());
         result.setRequestId(request.getRequestId());
-        result.setPaymentType(PaymentType.TARGET2);
+        result.setPaymentType(request.getPaymentType());
         result.setOperationType(PaymentOperationType.SIMULATE);
         result.setStatus(PaymentStatus.VALIDATED);
         result.setProvider(PaymentProviderType.TARGET2_PROVIDER);
         result.setTimestamp(LocalDateTime.now());
         result.setSuccess(true);
-        result.setEstimatedExecutionDate(LocalDate.now());
-        result.setEstimatedSettlementDate(LocalDate.now());
+        result.setEstimatedExecutionDate(request.getRequestedExecutionDate() != null ?
+                request.getRequestedExecutionDate() : LocalDate.now());
+        result.setEstimatedSettlementDate(result.getEstimatedExecutionDate().plusDays(1));
         result.setEstimatedFee(new BigDecimal("2.50"));
         result.setFeeCurrency(request.getCurrency());
-        result.setEstimatedExchangeRate(null); // No exchange rate for euro payments
         result.setFeasible(true);
+        result.setSimulationReference("SIM-" + UUID.randomUUID().toString().substring(0, 8));
 
         // Handle SCA (Strong Customer Authentication)
         boolean scaRequired = isScaRequired(request);
         result.setScaRequired(scaRequired);
         result.setScaCompleted(false); // Initially not completed
-        result.setSimulationReference("SIM-" + UUID.randomUUID().toString().substring(0, 8));
 
         if (scaRequired) {
             // Always trigger SCA delivery during simulation if required
@@ -69,28 +77,19 @@ public class DefaultTarget2PaymentProvider implements Target2PaymentProvider {
             String scaMethod = request.getSca() != null && request.getSca().getMethod() != null ?
                     request.getSca().getMethod() : "SMS"; // Default to SMS if not specified
             String scaRecipient = request.getSca() != null && request.getSca().getRecipient() != null ?
-                    request.getSca().getRecipient() : ScaUtils.maskPhoneNumber(getDefaultPhoneNumber(request));
+                    request.getSca().getRecipient() : maskPhoneNumber(getDefaultPhoneNumber(request));
 
             result.setScaDeliveryMethod(scaMethod);
             result.setScaDeliveryRecipient(scaRecipient);
             result.setScaExpiryTimestamp(LocalDateTime.now().plusMinutes(15)); // SCA code valid for 15 minutes
 
             // Create SCA result with challenge information
-            ScaResultDTO scaResult = new ScaResultDTO();
-            scaResult.setMethod(scaMethod);
-            scaResult.setChallengeId("CHL-" + UUID.randomUUID().toString().substring(0, 8));
-            scaResult.setVerificationTimestamp(null); // Not verified yet
-            scaResult.setAttemptCount(0);
-            scaResult.setMaxAttempts(3);
-            scaResult.setExpired(false);
-            scaResult.setExpiryTimestamp(result.getScaExpiryTimestamp());
-            scaResult.setSuccess(false); // Not verified yet
-
+            ScaResultDTO scaResult = ScaUtils.createDefaultScaResult(scaMethod, result.getScaExpiryTimestamp());
             result.setScaResult(scaResult);
 
             // If SCA code is already provided in the request, validate it
             if (request.getSca() != null && request.getSca().getAuthenticationCode() != null) {
-                ScaResultDTO validationResult = ScaUtils.validateSca(request.getSca());
+                ScaResultDTO validationResult = validateScaSync(request.getSca());
                 result.setScaResult(validationResult);
                 result.setScaCompleted(validationResult.isSuccess());
             }
@@ -109,7 +108,7 @@ public class DefaultTarget2PaymentProvider implements Target2PaymentProvider {
         PaymentExecutionResultDTO result = new PaymentExecutionResultDTO();
         result.setPaymentId(generatePaymentId());
         result.setRequestId(request.getRequestId());
-        result.setPaymentType(PaymentType.TARGET2);
+        result.setPaymentType(request.getPaymentType());
         result.setOperationType(PaymentOperationType.EXECUTE);
         result.setProvider(PaymentProviderType.TARGET2_PROVIDER);
         result.setTimestamp(LocalDateTime.now());
@@ -129,18 +128,21 @@ public class DefaultTarget2PaymentProvider implements Target2PaymentProvider {
             }
 
             if (request.getSca() == null) {
+                // SCA is required but not provided
                 result.setSuccess(false);
                 result.setStatus(PaymentStatus.REJECTED);
                 result.setErrorCode("SCA_REQUIRED");
                 result.setErrorMessage("Strong Customer Authentication is required for this payment");
+                result.setRequiresAuthorization(true);
                 return Mono.just(result);
             }
 
-            ScaResultDTO scaResult = ScaUtils.validateSca(request.getSca());
+            ScaResultDTO scaResult = validateScaSync(request.getSca());
             result.setScaResult(scaResult);
             result.setScaCompleted(scaResult.isSuccess());
 
             if (!scaResult.isSuccess()) {
+                // SCA validation failed
                 result.setSuccess(false);
                 result.setStatus(PaymentStatus.REJECTED);
                 result.setErrorCode("SCA_FAILED");
@@ -153,50 +155,78 @@ public class DefaultTarget2PaymentProvider implements Target2PaymentProvider {
         result.setSuccess(true);
         result.setStatus(PaymentStatus.COMPLETED);
         result.setExecutionDate(LocalDate.now());
-        result.setExpectedSettlementDate(LocalDate.now());
-        result.setTransactionReference("T2-" + UUID.randomUUID().toString().substring(0, 8));
-        result.setClearingSystemReference("T2-" + UUID.randomUUID().toString().substring(0, 8));
+        result.setExpectedSettlementDate(LocalDate.now().plusDays(1));
+        result.setTransactionReference("TRN-" + UUID.randomUUID().toString().substring(0, 8));
+        result.setClearingSystemReference("CSR-" + UUID.randomUUID().toString().substring(0, 8));
         result.setReceivedTimestamp(LocalDateTime.now());
         result.setRequiresAuthorization(false);
-        result.setProviderReference(request.getEndToEndId());
 
         return Mono.just(result);
     }
 
+    @Deprecated
+    public Mono<PaymentCancellationResultDTO> cancel(String paymentId, String reason) {
+        log.info("Cancelling TARGET2 payment (deprecated method): paymentId={}, reason={}", paymentId, reason);
 
+        // Create a cancellation request DTO
+        Target2CancellationRequestDTO request = new Target2CancellationRequestDTO();
+        request.setPaymentId(paymentId);
+        request.setCancellationReason(reason);
+        request.setPaymentType(PaymentType.TARGET2);
+
+        // Delegate to the new method
+        return cancel(request);
+    }
 
     @Override
     public Mono<PaymentCancellationResultDTO> cancel(Target2CancellationRequestDTO request) {
         log.info("Cancelling TARGET2 payment: {}", request);
 
-        // Create a default cancellation result
+        PaymentCancellationResultDTO result = new PaymentCancellationResultDTO();
+        result.setPaymentId(request.getPaymentId());
+        result.setRequestId(UUID.randomUUID().toString());
+        result.setPaymentType(request.getPaymentType());
+        result.setOperationType(PaymentOperationType.CANCEL);
+        result.setProvider(PaymentProviderType.TARGET2_PROVIDER);
+        result.setTimestamp(LocalDateTime.now());
+
+        // For cancellation, we'll require SCA for high-value payments
         boolean scaRequired = isHighValuePayment(request.getPaymentId());
-        PaymentCancellationResultDTO result = CancellationUtils.createCancellationResult(
-                request.getPaymentId(),
-                request.getPaymentType(),
-                PaymentProviderType.TARGET2_PROVIDER,
-                request.getCancellationReason(),
-                scaRequired);
+        result.setScaRequired(scaRequired);
+        result.setScaCompleted(false); // Initially not completed
 
-        // Check if a simulation reference is provided
-        String simulationReference = request.getSimulationReference();
-        if (simulationReference != null && !simulationReference.isEmpty()) {
-            log.info("Using simulation reference for SCA validation in cancellation: {}", simulationReference);
-            // In a real implementation, we would look up the simulation details using the reference
-            // and validate the SCA code against the previously delivered code
-        }
-
-        // Validate SCA if required
         if (scaRequired) {
-            boolean scaValid = CancellationUtils.validateScaForCancellation(result, request.getSca());
-            if (!scaValid) {
+            if (request.getSca() == null) {
+                // SCA is required but not provided
+                result.setSuccess(false);
+                result.setStatus(PaymentStatus.REJECTED);
+                result.setErrorCode("SCA_REQUIRED");
+                result.setErrorMessage("Strong Customer Authentication is required to cancel this payment");
+                return Mono.just(result);
+            }
+
+            ScaResultDTO scaResult = validateScaSync(request.getSca());
+            result.setScaResult(scaResult);
+            result.setScaCompleted(scaResult.isSuccess());
+
+            if (!scaResult.isSuccess()) {
+                // SCA validation failed
+                result.setSuccess(false);
+                result.setStatus(PaymentStatus.REJECTED);
+                result.setErrorCode("SCA_FAILED");
+                result.setErrorMessage("Strong Customer Authentication failed: " + scaResult.getMessage());
                 return Mono.just(result);
             }
         }
 
         // If we get here, either SCA is not required or it passed validation
-        // However, TARGET2 payments are generally not cancellable once submitted
-        CancellationUtils.setCancellationNotSupported(result, "TARGET2");
+        result.setSuccess(true);
+        result.setStatus(PaymentStatus.CANCELLED);
+        result.setCancellationDate(LocalDate.now());
+        result.setCancellationReason(request.getCancellationReason());
+        result.setFullyCancelled(true);
+        result.setFundsReturned(true);
+        result.setCancellationReference("REF-" + UUID.randomUUID().toString().substring(0, 8));
 
         return Mono.just(result);
     }
@@ -213,7 +243,7 @@ public class DefaultTarget2PaymentProvider implements Target2PaymentProvider {
                 PaymentProviderType.TARGET2_PROVIDER,
                 "EUR",
                 scaRequired,
-                false); // TARGET2 payments are generally not cancellable
+                true); // TARGET2 payments are generally cancellable
 
         // Set up SCA delivery if required
         if (scaRequired) {
@@ -230,7 +260,7 @@ public class DefaultTarget2PaymentProvider implements Target2PaymentProvider {
         PaymentScheduleResultDTO result = new PaymentScheduleResultDTO();
         result.setPaymentId(generatePaymentId());
         result.setRequestId(request.getRequestId());
-        result.setPaymentType(PaymentType.TARGET2);
+        result.setPaymentType(request.getPaymentType());
         result.setOperationType(PaymentOperationType.SCHEDULE);
         result.setProvider(PaymentProviderType.TARGET2_PROVIDER);
         result.setTimestamp(LocalDateTime.now());
@@ -240,20 +270,30 @@ public class DefaultTarget2PaymentProvider implements Target2PaymentProvider {
         result.setScaRequired(scaRequired);
         result.setScaCompleted(false); // Initially not completed
 
+        // Check if a simulation reference is provided
+        String simulationReference = request.getSimulationReference();
+        if (simulationReference != null && !simulationReference.isEmpty()) {
+            log.info("Using simulation reference for SCA validation in scheduling: {}", simulationReference);
+            // In a real implementation, we would look up the simulation details using the reference
+            // and validate the SCA code against the previously delivered code
+        }
+
         if (scaRequired) {
             if (request.getSca() == null) {
+                // SCA is required but not provided
                 result.setSuccess(false);
                 result.setStatus(PaymentStatus.REJECTED);
                 result.setErrorCode("SCA_REQUIRED");
-                result.setErrorMessage("Strong Customer Authentication is required for this payment");
+                result.setErrorMessage("Strong Customer Authentication is required to schedule this payment");
                 return Mono.just(result);
             }
 
-            ScaResultDTO scaResult = ScaUtils.validateSca(request.getSca());
+            ScaResultDTO scaResult = validateScaSync(request.getSca());
             result.setScaResult(scaResult);
             result.setScaCompleted(scaResult.isSuccess());
 
             if (!scaResult.isSuccess()) {
+                // SCA validation failed
                 result.setSuccess(false);
                 result.setStatus(PaymentStatus.REJECTED);
                 result.setErrorCode("SCA_FAILED");
@@ -266,8 +306,8 @@ public class DefaultTarget2PaymentProvider implements Target2PaymentProvider {
         result.setSuccess(true);
         result.setStatus(PaymentStatus.SCHEDULED);
         result.setScheduledExecutionDate(LocalDate.parse(executionDate));
-        result.setExpectedSettlementDate(LocalDate.parse(executionDate));
-        result.setTransactionReference("T2-" + UUID.randomUUID().toString().substring(0, 8));
+        result.setExpectedSettlementDate(LocalDate.parse(executionDate).plusDays(1));
+        result.setTransactionReference("SCH-" + UUID.randomUUID().toString().substring(0, 8));
         result.setRequiresAuthorization(false);
 
         return Mono.just(result);
@@ -279,19 +319,24 @@ public class DefaultTarget2PaymentProvider implements Target2PaymentProvider {
      * @return A unique payment ID
      */
     private String generatePaymentId() {
-        return "T2-" + UUID.randomUUID().toString();
+        return "PAY-" + UUID.randomUUID().toString().substring(0, 8);
     }
 
     /**
-     * Determines if Strong Customer Authentication (SCA) is required for the payment.
+     * Determines if Strong Customer Authentication (SCA) is required for a payment.
      *
      * @param request The payment request
      * @return true if SCA is required, false otherwise
      */
     private boolean isScaRequired(Target2PaymentRequestDTO request) {
-        // In a real implementation, this would check various factors like payment amount, risk, etc.
-        // For this simulation, we'll require SCA for all payments
-        return true;
+        // Implement SCA requirement logic based on various factors
+        // For example, require SCA for payments above a certain amount
+        if (request.getAmount().compareTo(new BigDecimal("30")) > 0) {
+            return true;
+        }
+
+        // For simulation purposes, we'll require SCA for 50% of payments randomly
+        return Math.random() > 0.5;
     }
 
     /**
@@ -307,6 +352,32 @@ public class DefaultTarget2PaymentProvider implements Target2PaymentProvider {
     }
 
     /**
+     * Validates the provided SCA information.
+     * This is a synchronous wrapper around the reactive validateSca method.
+     *
+     * @param sca The SCA information to validate
+     * @return The validation result
+     */
+    private ScaResultDTO validateScaSync(ScaDTO sca) {
+        // Call the reactive method and block to get the result
+        // In a real implementation, we would avoid blocking and use reactive patterns throughout
+        return scaProvider.validateSca(sca).block();
+    }
+
+    /**
+     * Masks a phone number for privacy, showing only the last 4 digits.
+     *
+     * @param phoneNumber The phone number to mask
+     * @return The masked phone number
+     */
+    private String maskPhoneNumber(String phoneNumber) {
+        if (phoneNumber == null || phoneNumber.length() <= 4) {
+            return phoneNumber;
+        }
+        return "*****" + phoneNumber.substring(phoneNumber.length() - 4);
+    }
+
+    /**
      * Gets a default phone number for the customer based on the request.
      * In a real implementation, this would look up the customer's phone number from a database.
      *
@@ -316,6 +387,34 @@ public class DefaultTarget2PaymentProvider implements Target2PaymentProvider {
     private String getDefaultPhoneNumber(Object request) {
         // In a real implementation, this would look up the customer's phone number
         // For simulation, we'll return a dummy phone number
-        return "+49123456789";
+        return "+1234567890";
+    }
+
+    @Override
+    public Mono<ScaResultDTO> triggerSca(String recipientIdentifier, String method, String referenceId) {
+        log.info("Triggering SCA for TARGET2 payment: recipient={}, method={}, reference={}",
+                maskPhoneNumber(recipientIdentifier), method, referenceId);
+
+        // Delegate to the SCA provider
+        return scaProvider.triggerSca(recipientIdentifier, method, referenceId);
+    }
+
+    @Override
+    public Mono<ScaResultDTO> validateSca(ScaDTO sca) {
+        log.info("Validating SCA for TARGET2 payment: challengeId={}", sca.getChallengeId());
+
+        // Delegate to the SCA provider
+        return scaProvider.validateSca(sca);
+    }
+
+    @Override
+    public Mono<Boolean> isHealthy() {
+        // Perform health check for TARGET2 payment provider
+        // This could include checking connectivity to external systems
+        log.debug("Performing health check for TARGET2 payment provider");
+
+        // For demonstration, we'll return a healthy status
+        // In a real implementation, this would check connectivity to systems
+        return Mono.just(true);
     }
 }

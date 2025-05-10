@@ -12,8 +12,10 @@ import com.catalis.core.banking.payments.hub.interfaces.enums.PaymentOperationTy
 import com.catalis.core.banking.payments.hub.interfaces.enums.PaymentProviderType;
 import com.catalis.core.banking.payments.hub.interfaces.enums.PaymentStatus;
 import com.catalis.core.banking.payments.hub.interfaces.providers.AchPaymentProvider;
+import com.catalis.core.banking.payments.hub.interfaces.providers.ScaProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
@@ -28,6 +30,13 @@ import java.util.UUID;
  */
 @Component
 public class DefaultAchPaymentProvider implements AchPaymentProvider {
+
+    private final ScaProvider scaProvider;
+
+    @Autowired
+    public DefaultAchPaymentProvider(ScaProvider scaProvider) {
+        this.scaProvider = scaProvider;
+    }
 
     private static final Logger log = LoggerFactory.getLogger(DefaultAchPaymentProvider.class);
 
@@ -88,7 +97,7 @@ public class DefaultAchPaymentProvider implements AchPaymentProvider {
 
             // If SCA code is already provided in the request, validate it
             if (request.getSca() != null && request.getSca().getAuthenticationCode() != null) {
-                ScaResultDTO validationResult = validateSca(request.getSca());
+                ScaResultDTO validationResult = validateScaSync(request.getSca());
                 result.setScaResult(validationResult);
                 result.setScaCompleted(validationResult.isSuccess());
             }
@@ -136,7 +145,7 @@ public class DefaultAchPaymentProvider implements AchPaymentProvider {
                 return Mono.just(result);
             }
 
-            ScaResultDTO scaResult = validateSca(request.getSca());
+            ScaResultDTO scaResult = validateScaSync(request.getSca());
             result.setScaResult(scaResult);
             result.setScaCompleted(scaResult.isSuccess());
 
@@ -202,7 +211,7 @@ public class DefaultAchPaymentProvider implements AchPaymentProvider {
                 return Mono.just(result);
             }
 
-            ScaResultDTO scaResult = validateSca(request.getSca());
+            ScaResultDTO scaResult = validateScaSync(request.getSca());
             result.setScaResult(scaResult);
             result.setScaCompleted(scaResult.isSuccess());
 
@@ -284,7 +293,7 @@ public class DefaultAchPaymentProvider implements AchPaymentProvider {
 
             // If SCA code is already provided in the request, validate it
             if (request.getSca() != null && request.getSca().getAuthenticationCode() != null) {
-                ScaResultDTO validationResult = validateSca(request.getSca());
+                ScaResultDTO validationResult = validateScaSync(request.getSca());
                 result.setScaResult(validationResult);
                 result.setScaCompleted(validationResult.isSuccess());
             }
@@ -334,7 +343,7 @@ public class DefaultAchPaymentProvider implements AchPaymentProvider {
                 return Mono.just(result);
             }
 
-            ScaResultDTO scaResult = validateSca(request.getSca());
+            ScaResultDTO scaResult = validateScaSync(request.getSca());
             result.setScaResult(scaResult);
             result.setScaCompleted(scaResult.isSuccess());
 
@@ -396,41 +405,15 @@ public class DefaultAchPaymentProvider implements AchPaymentProvider {
 
     /**
      * Validates the provided SCA information.
+     * This is a synchronous wrapper around the reactive validateSca method.
      *
      * @param sca The SCA information to validate
      * @return The validation result
      */
-    private ScaResultDTO validateSca(ScaDTO sca) {
-        // In a real implementation, this would validate the SCA against a backend system
-        // For simulation, we'll accept a specific code or generate random success/failure
-
-        ScaResultDTO result = new ScaResultDTO();
-        result.setMethod(sca.getMethod());
-        result.setChallengeId(sca.getChallengeId() != null ? sca.getChallengeId() : "CHL-" + UUID.randomUUID().toString().substring(0, 8));
-        result.setVerificationTimestamp(LocalDateTime.now());
-        result.setAttemptCount(1);
-        result.setMaxAttempts(3);
-        result.setExpired(false);
-        result.setExpiryTimestamp(LocalDateTime.now().plusMinutes(15));
-
-        // For testing, accept "123456" as a valid code
-        if (sca.getAuthenticationCode() != null && "123456".equals(sca.getAuthenticationCode())) {
-            result.setSuccess(true);
-        } else if (sca.getAuthenticationCode() == null) {
-            result.setSuccess(false);
-            result.setErrorCode("SCA_CODE_MISSING");
-            result.setErrorMessage("Authentication code is required");
-        } else {
-            // Random success/failure for other codes
-            boolean success = Math.random() > 0.3; // 70% success rate
-            result.setSuccess(success);
-            if (!success) {
-                result.setErrorCode("SCA_INVALID_CODE");
-                result.setErrorMessage("Invalid authentication code");
-            }
-        }
-
-        return result;
+    private ScaResultDTO validateScaSync(ScaDTO sca) {
+        // Call the reactive method and block to get the result
+        // In a real implementation, we would avoid blocking and use reactive patterns throughout
+        return scaProvider.validateSca(sca).block();
     }
 
     /**
@@ -457,5 +440,33 @@ public class DefaultAchPaymentProvider implements AchPaymentProvider {
         // In a real implementation, this would look up the customer's phone number
         // For simulation, we'll return a dummy phone number
         return "+1234567890";
+    }
+
+    @Override
+    public Mono<ScaResultDTO> triggerSca(String recipientIdentifier, String method, String referenceId) {
+        log.info("Triggering SCA for ACH payment: recipient={}, method={}, reference={}",
+                maskPhoneNumber(recipientIdentifier), method, referenceId);
+
+        // Delegate to the SCA provider
+        return scaProvider.triggerSca(recipientIdentifier, method, referenceId);
+    }
+
+    @Override
+    public Mono<ScaResultDTO> validateSca(ScaDTO sca) {
+        log.info("Validating SCA for ACH payment: challengeId={}", sca.getChallengeId());
+
+        // Delegate to the SCA provider
+        return scaProvider.validateSca(sca);
+    }
+
+    @Override
+    public Mono<Boolean> isHealthy() {
+        // Perform health check for ACH payment provider
+        // This could include checking connectivity to external ACH systems
+        log.debug("Performing health check for ACH payment provider");
+
+        // For demonstration, we'll return a healthy status
+        // In a real implementation, this would check connectivity to ACH systems
+        return Mono.just(true);
     }
 }

@@ -3,10 +3,15 @@ package com.catalis.core.banking.payments.hub.core.services.impl;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentSimulationResultDTO;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.common.ScaDTO;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.swift.SwiftPaymentRequestDTO;
+import com.catalis.core.banking.payments.hub.interfaces.dtos.common.ScaResultDTO;
 import com.catalis.core.banking.payments.hub.interfaces.enums.PaymentOperationType;
 import com.catalis.core.banking.payments.hub.interfaces.enums.PaymentProviderType;
 import com.catalis.core.banking.payments.hub.interfaces.enums.PaymentStatus;
 import com.catalis.core.banking.payments.hub.interfaces.enums.PaymentType;
+import com.catalis.core.banking.payments.hub.interfaces.providers.ScaProvider;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.MockitoAnnotations;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
@@ -22,10 +27,29 @@ class DefaultSwiftPaymentProviderTest {
     private DefaultSwiftPaymentProvider swiftPaymentProvider;
     private SwiftPaymentRequestDTO request;
 
+    @Mock
+    private ScaProvider scaProvider;
+
     @BeforeEach
     void setUp() {
-        swiftPaymentProvider = new DefaultSwiftPaymentProvider();
-        
+        MockitoAnnotations.openMocks(this);
+
+        // Mock SCA provider behavior
+        ScaResultDTO mockScaResult = new ScaResultDTO();
+        mockScaResult.setSuccess(true);
+        mockScaResult.setChallengeId("CHL-12345");
+
+        Mockito.when(scaProvider.validateSca(Mockito.any(ScaDTO.class)))
+               .thenReturn(Mono.just(mockScaResult));
+
+        Mockito.when(scaProvider.triggerSca(Mockito.anyString(), Mockito.anyString(), Mockito.anyString()))
+               .thenReturn(Mono.just(mockScaResult));
+
+        Mockito.when(scaProvider.isScaRequired(Mockito.anyString(), Mockito.anyString(), Mockito.anyString(), Mockito.anyString()))
+               .thenReturn(Mono.just(true));
+
+        swiftPaymentProvider = new DefaultSwiftPaymentProvider(scaProvider);
+
         request = new SwiftPaymentRequestDTO();
         request.setRequestId("REQ-12345");
         request.setPaymentType(PaymentType.SWIFT_MT103);

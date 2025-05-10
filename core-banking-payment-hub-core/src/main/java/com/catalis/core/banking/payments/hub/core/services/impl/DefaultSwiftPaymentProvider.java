@@ -14,8 +14,10 @@ import com.catalis.core.banking.payments.hub.interfaces.enums.PaymentOperationTy
 import com.catalis.core.banking.payments.hub.interfaces.enums.PaymentProviderType;
 import com.catalis.core.banking.payments.hub.interfaces.enums.PaymentStatus;
 import com.catalis.core.banking.payments.hub.interfaces.providers.SwiftPaymentProvider;
+import com.catalis.core.banking.payments.hub.interfaces.providers.ScaProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
@@ -29,6 +31,13 @@ import java.util.UUID;
  */
 @Component
 public class DefaultSwiftPaymentProvider implements SwiftPaymentProvider {
+
+    private final ScaProvider scaProvider;
+
+    @Autowired
+    public DefaultSwiftPaymentProvider(ScaProvider scaProvider) {
+        this.scaProvider = scaProvider;
+    }
 
     private static final Logger log = LoggerFactory.getLogger(DefaultSwiftPaymentProvider.class);
 
@@ -401,5 +410,33 @@ public class DefaultSwiftPaymentProvider implements SwiftPaymentProvider {
         // In a real implementation, this would look up the customer's phone number
         // For simulation, we'll return a dummy phone number
         return "+1234567890";
+    }
+
+    @Override
+    public Mono<ScaResultDTO> triggerSca(String recipientIdentifier, String method, String referenceId) {
+        log.info("Triggering SCA for SWIFT payment: recipient={}, method={}, reference={}",
+                ScaUtils.maskPhoneNumber(recipientIdentifier), method, referenceId);
+
+        // Delegate to the SCA provider
+        return scaProvider.triggerSca(recipientIdentifier, method, referenceId);
+    }
+
+    @Override
+    public Mono<ScaResultDTO> validateSca(ScaDTO sca) {
+        log.info("Validating SCA for SWIFT payment: challengeId={}", sca.getChallengeId());
+
+        // Delegate to the SCA provider
+        return scaProvider.validateSca(sca);
+    }
+
+    @Override
+    public Mono<Boolean> isHealthy() {
+        // Perform health check for SWIFT payment provider
+        // This could include checking connectivity to external SWIFT systems
+        log.debug("Performing health check for SWIFT payment provider");
+
+        // For demonstration, we'll return a healthy status
+        // In a real implementation, this would check connectivity to SWIFT systems
+        return Mono.just(true);
     }
 }
