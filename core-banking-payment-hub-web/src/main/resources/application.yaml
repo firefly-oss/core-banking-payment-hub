@@ -1,6 +1,6 @@
 spring:
   application:
-    name: core-baking-payment-hub
+    name: core-banking-payment-hub
     version: 1.0.0
     description: Core Banking Payment Hub Application
     team:

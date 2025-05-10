@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Firefly Core Banking Payment Hub provides a comprehensive payment cancellation system that allows users to cancel payments that have been submitted but not yet settled. The cancellation system follows the same simulate-then-execute pattern as other payment operations and includes Strong Customer Authentication (SCA) support for secure cancellations.
+The Firefly Core Banking Payment Hub provides a comprehensive payment cancellation system that allows users to cancel payments that have been submitted but not yet settled. The cancellation system follows the same simulate-then-execute pattern as other payment operations and includes Strong Customer Authentication (SCA) support for secure cancellations. SCA is implemented as a delegated operation to payment providers through the `ScaProvider` interface.
 
 This document provides a detailed explanation of the payment cancellation implementation, including the data models, flow, and integration points.
 
@@ -141,7 +141,7 @@ The first step is to simulate the cancellation to determine if it's feasible, ca
 
 ```java
 @PostMapping("/cancel/simulate")
-@Operation(summary = "Simulate cancellation of a payment", 
+@Operation(summary = "Simulate cancellation of a payment",
            description = "Simulates cancellation of a payment to trigger SCA delivery and provide information")
 public Mono<ResponseEntity<PaymentSimulationResultDTO>> simulateCancellation(
         @Valid @RequestBody PaymentCancellationRequestDTO request) {

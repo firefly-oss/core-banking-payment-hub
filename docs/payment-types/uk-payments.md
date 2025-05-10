@@ -160,7 +160,7 @@ UK payments rely on sort codes and account numbers for routing:
 
 - **Sort Code**: 6-digit number identifying the bank and branch
   - Format: XX-XX-XX (e.g., 12-34-56)
-  
+
 - **Account Number**: 8-digit number identifying the specific account
   - Format: XXXXXXXX (e.g., 12345678)
 
@@ -202,8 +202,50 @@ The Bank of England oversees UK payment systems:
 - Systemic risk management
 - Operational resilience
 - Settlement finality
-- Liquidity management
-- Access criteria
+
+## Implementation Details
+
+### UkPaymentProvider Interface
+
+The `UkPaymentProvider` interface extends the `BasePaymentProvider` interface and defines the contract for UK payment operations. It provides separate methods for each UK payment type (FPS, BACS, CHAPS):
+
+```java
+public interface UkPaymentProvider extends BasePaymentProvider {
+    // Faster Payments
+    Mono<PaymentSimulationResultDTO> simulateFasterPayment(UkFasterPaymentRequestDTO request);
+    Mono<PaymentExecutionResultDTO> executeFasterPayment(UkFasterPaymentRequestDTO request);
+    Mono<PaymentCancellationResultDTO> cancelFasterPayment(UkCancellationRequestDTO request);
+    Mono<PaymentSimulationResultDTO> simulateFasterPaymentCancellation(UkCancellationRequestDTO request);
+    Mono<PaymentScheduleResultDTO> scheduleFasterPayment(UkFasterPaymentRequestDTO request, String executionDate);
+
+    // BACS Payments
+    Mono<PaymentSimulationResultDTO> simulateBacsPayment(UkBacsPaymentRequestDTO request);
+    Mono<PaymentExecutionResultDTO> executeBacsPayment(UkBacsPaymentRequestDTO request);
+    Mono<PaymentCancellationResultDTO> cancelBacsPayment(UkCancellationRequestDTO request);
+    Mono<PaymentSimulationResultDTO> simulateBacsPaymentCancellation(UkCancellationRequestDTO request);
+    Mono<PaymentScheduleResultDTO> scheduleBacsPayment(UkBacsPaymentRequestDTO request, String executionDate);
+
+    // CHAPS Payments
+    Mono<PaymentSimulationResultDTO> simulateChapsPayment(UkChapsPaymentRequestDTO request);
+    Mono<PaymentExecutionResultDTO> executeChapsPayment(UkChapsPaymentRequestDTO request);
+    Mono<PaymentCancellationResultDTO> cancelChapsPayment(UkCancellationRequestDTO request);
+    Mono<PaymentSimulationResultDTO> simulateChapsPaymentCancellation(UkCancellationRequestDTO request);
+    Mono<PaymentScheduleResultDTO> scheduleChapsPayment(UkChapsPaymentRequestDTO request, String executionDate);
+
+    // Inherited from BasePaymentProvider
+    Mono<ScaResultDTO> triggerSca(String recipientIdentifier, String method, String referenceId);
+    Mono<ScaResultDTO> validateSca(ScaDTO sca);
+    Mono<Boolean> isHealthy();
+}
+```
+
+### Strong Customer Authentication
+
+UK payments support Strong Customer Authentication (SCA) as required by UK regulations. The SCA implementation follows the same pattern as other payment types, with the `UkPaymentProvider` delegating SCA operations to the `ScaProvider`.
+
+### Health Monitoring
+
+The UK payment provider implements the `isHealthy()` method to report its operational status, which is used by the health monitoring system to track the overall system health.
 
 ## Implementation in Firefly Core Banking Payment Hub
 

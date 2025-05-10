@@ -24,3 +24,6 @@ Detailed documentation for each payment type supported by the Firefly Core Banki
 - [Architecture Overview](technical/architecture.md) - Detailed explanation of the hexagonal architecture
 - [Provider Registry](technical/provider-registry.md) - How the provider registry works
 - [Data Models](technical/data-models.md) - Explanation of the data models used in the system
+- [SCA Implementation](technical/sca-implementation.md) - Strong Customer Authentication implementation details
+- [Payment Cancellation](technical/cancellation.md) - Payment cancellation flow and implementation
+- [Health Monitoring](technical/health-monitoring.md) - System health monitoring capabilities

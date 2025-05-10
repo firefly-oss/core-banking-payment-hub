@@ -190,7 +190,17 @@ Each service provides methods for simulating, executing, cancelling, and schedul
 
 ### Provider Interfaces
 
-Provider interfaces define the contracts that payment providers must implement:
+Provider interfaces define the contracts that payment providers must implement. All payment provider interfaces extend the `BasePaymentProvider` interface, which includes common operations like SCA and health checks:
+
+```java
+public interface BasePaymentProvider {
+    Mono<ScaResultDTO> triggerSca(String recipientIdentifier, String method, String referenceId);
+    Mono<ScaResultDTO> validateSca(ScaDTO sca);
+    Mono<Boolean> isHealthy();
+}
+```
+
+The specific payment provider interfaces then add their own payment-specific operations:
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────────┐
@@ -199,12 +209,16 @@ Provider interfaces define the contracts that payment providers must implement:
 │
 ▼
 ┌───────────────────────────────────────────────────────────────────────────────┐
-│                          Generic Provider Interface                           │
+│                          Payment Provider Interface                           │
 │                                                                               │
 │   - simulate(request): Mono<PaymentSimulationResultDTO>                       │
 │   - execute(request): Mono<PaymentExecutionResultDTO>                         │
-│   - cancel(paymentId, reason): Mono<PaymentCancellationResultDTO>             │
-│   - schedule(request, executionDate, recurrence): Mono<PaymentScheduleResultDTO>│
+│   - cancel(request): Mono<PaymentCancellationResultDTO>                       │
+│   - simulateCancellation(request): Mono<PaymentSimulationResultDTO>           │
+│   - schedule(request, executionDate): Mono<PaymentScheduleResultDTO>          │
+│   - triggerSca(recipient, method, reference): Mono<ScaResultDTO>              │
+│   - validateSca(sca): Mono<ScaResultDTO>                                      │
+│   - isHealthy(): Mono<Boolean>                                                │
 └───────────────────────────────────────────────────────────────────────────────┘
        │
        ├─────────────────┬─────────────────┬─────────────────┬─────────────────┬─────────────────┬─────────────────┐

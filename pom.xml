@@ -21,9 +21,8 @@
 
 
     <properties>
-        <core-banking-payment-hub.version>
-            1.0.0-SNAPSHOT
-        </core-banking-payment-hub.version>
+        <java.version>21</java.version>
+        <!-- other properties -->
     </properties>
 
     <dependencyManagement>

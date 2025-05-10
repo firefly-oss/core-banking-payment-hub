@@ -360,12 +360,15 @@ The Payment Hub implements Strong Customer Authentication (SCA) to comply with r
 
 The Payment Hub's SCA implementation includes:
 
+- **Dedicated SCA Provider** - SCA is implemented as a dedicated provider interface (`ScaProvider`) with methods for triggering and validating SCA
+- **Provider Delegation** - Payment providers delegate SCA operations to the SCA provider through the `BasePaymentProvider` interface
 - **Dynamic SCA Requirements** - SCA is required based on payment amount, destination country, and other risk factors
 - **Multiple Authentication Methods** - Support for SMS, email, mobile app, and biometric authentication
 - **Challenge-Response Flow** - Secure challenge-response mechanism for authentication
 - **SCA for Critical Operations** - Authentication for payment execution, scheduling, and cancellation
 - **Comprehensive Coverage** - SCA is implemented for all payment types (SEPA, SWIFT, ACH, UK, European, Internal)
 - **Regulatory Compliance** - Complies with PSD2 requirements for European payments and similar regulations for other regions
+- **Health Monitoring** - SCA provider health is monitored through dedicated health indicators
 
 ### SCA Flow
 
