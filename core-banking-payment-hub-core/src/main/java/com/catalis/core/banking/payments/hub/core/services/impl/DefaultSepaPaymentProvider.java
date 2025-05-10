@@ -1,8 +1,7 @@
 package com.catalis.core.banking.payments.hub.core.services.impl;
 
-import com.catalis.core.banking.payments.hub.interfaces.providers.ScaProvider;
-import org.springframework.beans.factory.annotation.Autowired;
-
+import com.catalis.core.banking.payments.hub.core.utils.MetricsUtils;
+import com.catalis.core.banking.payments.hub.core.utils.ScaUtils;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentCancellationResultDTO;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentExecutionResultDTO;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentScheduleResultDTO;
@@ -15,31 +14,32 @@ import com.catalis.core.banking.payments.hub.interfaces.dtos.sepa.SepaScheduleRe
 import com.catalis.core.banking.payments.hub.interfaces.enums.PaymentOperationType;
 import com.catalis.core.banking.payments.hub.interfaces.enums.PaymentProviderType;
 import com.catalis.core.banking.payments.hub.interfaces.enums.PaymentStatus;
+import com.catalis.core.banking.payments.hub.interfaces.providers.ScaProvider;
 import com.catalis.core.banking.payments.hub.interfaces.providers.SepaPaymentProvider;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
 /**
  * Default implementation of the SepaPaymentProvider interface.
+ * Extends the AbstractBasePaymentProvider for standardized SCA handling and metrics.
  */
+@Slf4j
 @Component
-public class DefaultSepaPaymentProvider implements SepaPaymentProvider {
-
-    private final ScaProvider scaProvider;
+public class DefaultSepaPaymentProvider extends AbstractBasePaymentProvider implements SepaPaymentProvider {
 
     @Autowired
     public DefaultSepaPaymentProvider(ScaProvider scaProvider) {
-        this.scaProvider = scaProvider;
+        super(scaProvider);
     }
-
-    private static final Logger log = LoggerFactory.getLogger(DefaultSepaPaymentProvider.class);
 
     @Override
     public Mono<PaymentSimulationResultDTO> simulate(SepaPaymentRequestDTO request) {
@@ -406,48 +406,25 @@ public class DefaultSepaPaymentProvider implements SepaPaymentProvider {
     private ScaResultDTO validateScaSync(ScaDTO sca) {
         // Call the reactive method and block to get the result
         // In a real implementation, we would avoid blocking and use reactive patterns throughout
-        return scaProvider.validateSca(sca).block();
+        return validateSca(sca).block();
     }
 
-    /**
-     * Masks a phone number for privacy, showing only the last 4 digits.
-     *
-     * @param phoneNumber The phone number to mask
-     * @return The masked phone number
-     */
-    private String maskPhoneNumber(String phoneNumber) {
-        if (phoneNumber == null || phoneNumber.length() <= 4) {
-            return phoneNumber;
-        }
-        return "*****" + phoneNumber.substring(phoneNumber.length() - 4);
-    }
+    // SCA methods are now inherited from AbstractBasePaymentProvider
 
     @Override
-    public Mono<ScaResultDTO> triggerSca(String recipientIdentifier, String method, String referenceId) {
-        log.info("Triggering SCA for SEPA payment: recipient={}, method={}, reference={}",
-                maskPhoneNumber(recipientIdentifier), method, referenceId);
-
-        // Delegate to the SCA provider
-        return scaProvider.triggerSca(recipientIdentifier, method, referenceId);
-    }
-
-    @Override
-    public Mono<ScaResultDTO> validateSca(ScaDTO sca) {
-        log.info("Validating SCA for SEPA payment: challengeId={}", sca.getChallengeId());
-
-        // Delegate to the SCA provider
-        return scaProvider.validateSca(sca);
-    }
-
-    @Override
-    public Mono<Boolean> isHealthy() {
+    protected Mono<Boolean> checkProviderHealth() {
         // Perform health check for SEPA payment provider
         // This could include checking connectivity to external SEPA systems
-        log.debug("Performing health check for SEPA payment provider");
+        log.debug("Checking connectivity to SEPA payment systems");
 
         // For demonstration, we'll return a healthy status
         // In a real implementation, this would check connectivity to SEPA systems
         return Mono.just(true);
+    }
+
+    @Override
+    protected String getProviderName() {
+        return "sepa";
     }
 
     /**

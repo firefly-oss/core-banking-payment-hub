@@ -1,6 +1,7 @@
 package com.catalis.core.banking.payments.hub.core.services.impl;
 
 import com.catalis.core.banking.payments.hub.core.utils.CancellationUtils;
+import com.catalis.core.banking.payments.hub.core.utils.MetricsUtils;
 import com.catalis.core.banking.payments.hub.core.utils.ScaUtils;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentCancellationResultDTO;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentExecutionResultDTO;
@@ -16,31 +17,30 @@ import com.catalis.core.banking.payments.hub.interfaces.enums.PaymentStatus;
 import com.catalis.core.banking.payments.hub.interfaces.enums.PaymentType;
 import com.catalis.core.banking.payments.hub.interfaces.providers.TipsPaymentProvider;
 import com.catalis.core.banking.payments.hub.interfaces.providers.ScaProvider;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
 /**
  * Default implementation of the TipsPaymentProvider interface.
+ * Extends the AbstractBasePaymentProvider for standardized SCA handling and metrics.
  */
+@Slf4j
 @Component
-public class DefaultTipsPaymentProvider implements TipsPaymentProvider {
-
-    private final ScaProvider scaProvider;
+public class DefaultTipsPaymentProvider extends AbstractBasePaymentProvider implements TipsPaymentProvider {
 
     @Autowired
     public DefaultTipsPaymentProvider(ScaProvider scaProvider) {
-        this.scaProvider = scaProvider;
+        super(scaProvider);
     }
-
-    private static final Logger log = LoggerFactory.getLogger(DefaultTipsPaymentProvider.class);
 
     @Override
     public Mono<PaymentSimulationResultDTO> simulate(TipsPaymentRequestDTO request) {
@@ -365,19 +365,6 @@ public class DefaultTipsPaymentProvider implements TipsPaymentProvider {
     }
 
     /**
-     * Masks a phone number for privacy, showing only the last 4 digits.
-     *
-     * @param phoneNumber The phone number to mask
-     * @return The masked phone number
-     */
-    private String maskPhoneNumber(String phoneNumber) {
-        if (phoneNumber == null || phoneNumber.length() <= 4) {
-            return phoneNumber;
-        }
-        return "*****" + phoneNumber.substring(phoneNumber.length() - 4);
-    }
-
-    /**
      * Gets a default phone number for the customer based on the request.
      * In a real implementation, this would look up the customer's phone number from a database.
      *
@@ -390,31 +377,21 @@ public class DefaultTipsPaymentProvider implements TipsPaymentProvider {
         return "+1234567890";
     }
 
-    @Override
-    public Mono<ScaResultDTO> triggerSca(String recipientIdentifier, String method, String referenceId) {
-        log.info("Triggering SCA for TIPS payment: recipient={}, method={}, reference={}",
-                maskPhoneNumber(recipientIdentifier), method, referenceId);
-
-        // Delegate to the SCA provider
-        return scaProvider.triggerSca(recipientIdentifier, method, referenceId);
-    }
+    // SCA methods are now inherited from AbstractBasePaymentProvider
 
     @Override
-    public Mono<ScaResultDTO> validateSca(ScaDTO sca) {
-        log.info("Validating SCA for TIPS payment: challengeId={}", sca.getChallengeId());
-
-        // Delegate to the SCA provider
-        return scaProvider.validateSca(sca);
-    }
-
-    @Override
-    public Mono<Boolean> isHealthy() {
+    protected Mono<Boolean> checkProviderHealth() {
         // Perform health check for TIPS payment provider
         // This could include checking connectivity to external systems
-        log.debug("Performing health check for TIPS payment provider");
+        log.debug("Checking connectivity to TIPS payment systems");
 
         // For demonstration, we'll return a healthy status
         // In a real implementation, this would check connectivity to systems
         return Mono.just(true);
+    }
+
+    @Override
+    protected String getProviderName() {
+        return "tips";
     }
 }

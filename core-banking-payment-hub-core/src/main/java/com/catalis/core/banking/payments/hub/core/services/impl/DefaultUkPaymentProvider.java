@@ -1,5 +1,6 @@
 package com.catalis.core.banking.payments.hub.core.services.impl;
 
+import com.catalis.core.banking.payments.hub.core.utils.MetricsUtils;
 import com.catalis.core.banking.payments.hub.core.utils.ScaUtils;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentCancellationResultDTO;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentExecutionResultDTO;
@@ -13,67 +14,44 @@ import com.catalis.core.banking.payments.hub.interfaces.dtos.uk.UkChapsPaymentRe
 import com.catalis.core.banking.payments.hub.interfaces.dtos.uk.UkFasterPaymentRequestDTO;
 import com.catalis.core.banking.payments.hub.interfaces.providers.ScaProvider;
 import com.catalis.core.banking.payments.hub.interfaces.providers.UkPaymentProvider;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
+import java.time.Duration;
+import java.time.Instant;
+
 /**
  * Default implementation of the UkPaymentProvider interface.
  * Handles UK payments for different payment types (FPS, BACS, CHAPS).
+ * Extends the AbstractBasePaymentProvider for standardized SCA handling and metrics.
  */
+@Slf4j
 @Component
-public class DefaultUkPaymentProvider implements UkPaymentProvider {
+public class DefaultUkPaymentProvider extends AbstractBasePaymentProvider implements UkPaymentProvider {
 
-    private static final Logger log = LoggerFactory.getLogger(DefaultUkPaymentProvider.class);
-    
-    private final ScaProvider scaProvider;
-    
     @Autowired
     public DefaultUkPaymentProvider(ScaProvider scaProvider) {
-        this.scaProvider = scaProvider;
+        super(scaProvider);
     }
 
-    @Override
-    public Mono<ScaResultDTO> triggerSca(String recipientIdentifier, String method, String referenceId) {
-        log.info("Triggering SCA for UK payment: recipient={}, method={}, reference={}", 
-                maskPhoneNumber(recipientIdentifier), method, referenceId);
-        
-        // Delegate to the SCA provider
-        return scaProvider.triggerSca(recipientIdentifier, method, referenceId);
-    }
+    // SCA methods are now inherited from AbstractBasePaymentProvider
 
     @Override
-    public Mono<ScaResultDTO> validateSca(ScaDTO sca) {
-        log.info("Validating SCA for UK payment: challengeId={}", sca.getChallengeId());
-        
-        // Delegate to the SCA provider
-        return scaProvider.validateSca(sca);
-    }
-    
-    @Override
-    public Mono<Boolean> isHealthy() {
+    protected Mono<Boolean> checkProviderHealth() {
         // Perform health check for UK payment provider
-        log.debug("Performing health check for UK payment provider");
-        
+        log.debug("Checking connectivity to UK payment systems");
+
         // For demonstration, we'll return a healthy status
         return Mono.just(true);
     }
-    
-    /**
-     * Masks a phone number for privacy, showing only the last 4 digits.
-     *
-     * @param phoneNumber The phone number to mask
-     * @return The masked phone number
-     */
-    private String maskPhoneNumber(String phoneNumber) {
-        if (phoneNumber == null || phoneNumber.length() <= 4) {
-            return phoneNumber;
-        }
-        return "*****" + phoneNumber.substring(phoneNumber.length() - 4);
+
+    @Override
+    protected String getProviderName() {
+        return "uk";
     }
-    
+
     /**
      * Validates the provided SCA information synchronously.
      *

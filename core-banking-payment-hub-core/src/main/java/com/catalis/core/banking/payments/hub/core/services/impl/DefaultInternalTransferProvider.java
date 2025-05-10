@@ -1,6 +1,7 @@
 package com.catalis.core.banking.payments.hub.core.services.impl;
 
 import com.catalis.core.banking.payments.hub.core.utils.CancellationUtils;
+import com.catalis.core.banking.payments.hub.core.utils.MetricsUtils;
 import com.catalis.core.banking.payments.hub.core.utils.ScaUtils;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentCancellationResultDTO;
 import com.catalis.core.banking.payments.hub.interfaces.dtos.common.PaymentExecutionResultDTO;
@@ -15,13 +16,14 @@ import com.catalis.core.banking.payments.hub.interfaces.enums.PaymentProviderTyp
 import com.catalis.core.banking.payments.hub.interfaces.enums.PaymentStatus;
 import com.catalis.core.banking.payments.hub.interfaces.providers.InternalTransferProvider;
 import com.catalis.core.banking.payments.hub.interfaces.providers.ScaProvider;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -29,18 +31,16 @@ import java.util.UUID;
 /**
  * Default implementation of the InternalTransferProvider interface.
  * Handles transfers between accounts within the core banking system.
+ * Extends the AbstractBasePaymentProvider for standardized SCA handling and metrics.
  */
+@Slf4j
 @Component
-public class DefaultInternalTransferProvider implements InternalTransferProvider {
-
-    private final ScaProvider scaProvider;
+public class DefaultInternalTransferProvider extends AbstractBasePaymentProvider implements InternalTransferProvider {
 
     @Autowired
     public DefaultInternalTransferProvider(ScaProvider scaProvider) {
-        this.scaProvider = scaProvider;
+        super(scaProvider);
     }
-
-    private static final Logger log = LoggerFactory.getLogger(DefaultInternalTransferProvider.class);
 
     @Override
     public Mono<PaymentSimulationResultDTO> simulate(InternalTransferRequestDTO request) {
@@ -311,44 +311,21 @@ public class DefaultInternalTransferProvider implements InternalTransferProvider
         return Mono.just(result);
     }
 
-    /**
-     * Masks a phone number for privacy, showing only the last 4 digits.
-     *
-     * @param phoneNumber The phone number to mask
-     * @return The masked phone number
-     */
-    private String maskPhoneNumber(String phoneNumber) {
-        if (phoneNumber == null || phoneNumber.length() <= 4) {
-            return phoneNumber;
-        }
-        return "*****" + phoneNumber.substring(phoneNumber.length() - 4);
-    }
+    // SCA methods are now inherited from AbstractBasePaymentProvider
 
     @Override
-    public Mono<ScaResultDTO> triggerSca(String recipientIdentifier, String method, String referenceId) {
-        log.info("Triggering SCA for internal transfer: recipient={}, method={}, reference={}",
-                maskPhoneNumber(recipientIdentifier), method, referenceId);
-
-        // Delegate to the SCA provider
-        return scaProvider.triggerSca(recipientIdentifier, method, referenceId);
-    }
-
-    @Override
-    public Mono<ScaResultDTO> validateSca(ScaDTO sca) {
-        log.info("Validating SCA for internal transfer: challengeId={}", sca.getChallengeId());
-
-        // Delegate to the SCA provider
-        return scaProvider.validateSca(sca);
-    }
-
-    @Override
-    public Mono<Boolean> isHealthy() {
+    protected Mono<Boolean> checkProviderHealth() {
         // Perform health check for internal transfer provider
         // This could include checking connectivity to internal account systems
-        log.debug("Performing health check for internal transfer provider");
+        log.debug("Checking connectivity to internal account systems");
 
         // For demonstration, we'll return a healthy status
         // In a real implementation, this would check connectivity to internal systems
         return Mono.just(true);
+    }
+
+    @Override
+    protected String getProviderName() {
+        return "internal";
     }
 }
