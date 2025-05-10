@@ -9,6 +9,8 @@ import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -74,21 +76,35 @@ public class PaymentProvidersHealthIndicator implements HealthIndicator {
      */
     private boolean checkProviderHealth(PaymentProviderType providerType, String detailKey, Map<String, Object> details) {
         Optional<BasePaymentProvider> providerOpt = providerRegistry.getProvider(providerType);
-        
+
         if (providerOpt.isPresent()) {
             BasePaymentProvider provider = providerOpt.get();
             try {
+                Instant start = Instant.now();
                 boolean isHealthy = provider.isHealthy().block(); // Block for simplicity in health check
-                details.put(detailKey, isHealthy ? "UP" : "DOWN");
+                Duration duration = Duration.between(start, Instant.now());
+
+                Map<String, Object> providerDetails = new HashMap<>();
+                providerDetails.put("status", isHealthy ? "UP" : "DOWN");
+                providerDetails.put("responseTime", duration.toMillis() + "ms");
+                providerDetails.put("provider", provider.getClass().getSimpleName());
+
+                details.put(detailKey, providerDetails);
                 return isHealthy;
             } catch (Exception e) {
                 log.error("Error checking health of {} provider: {}", providerType, e.getMessage());
-                details.put(detailKey, "ERROR: " + e.getMessage());
+
+                Map<String, Object> providerDetails = new HashMap<>();
+                providerDetails.put("status", "ERROR");
+                providerDetails.put("error", e.getMessage());
+                providerDetails.put("provider", provider.getClass().getSimpleName());
+
+                details.put(detailKey, providerDetails);
                 return false;
             }
         } else {
             // Provider not available is not considered an error
-            details.put(detailKey, "NOT_AVAILABLE");
+            details.put(detailKey, Map.of("status", "NOT_AVAILABLE"));
             return true;
         }
     }

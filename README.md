@@ -54,6 +54,9 @@ Key features include:
 - Dynamic provider discovery and registration
 - Payment simulation, execution, cancellation, and scheduling
 - Strong Customer Authentication (SCA) for secure payment operations
+- Standardized payment provider implementation with common base functionality
+- Comprehensive metrics collection using Micrometer
+- Advanced biometric authentication support (fingerprint, face, voice, iris, etc.)
 - Reactive programming model with non-blocking I/O
 - Extensible architecture for adding new payment types and providers
 - Comprehensive API documentation with OpenAPI/Swagger
@@ -149,6 +152,44 @@ This modular structure ensures a clean separation of concerns and allows for ind
 
 ### Key Components
 
+#### Abstract Base Provider
+
+The Payment Hub implements a standardized approach to payment providers through an abstract base implementation:
+
+```java
+public abstract class AbstractBasePaymentProvider implements BasePaymentProvider {
+    protected final ScaProvider scaProvider;
+
+    public AbstractBasePaymentProvider(ScaProvider scaProvider) {
+        this.scaProvider = scaProvider;
+    }
+
+    @Override
+    public Mono<ScaResultDTO> triggerSca(String recipientIdentifier, String method, String referenceId) {
+        // Standardized implementation with metrics collection
+    }
+
+    @Override
+    public Mono<ScaResultDTO> validateSca(ScaDTO sca) {
+        // Standardized implementation with metrics collection
+    }
+
+    @Override
+    public Mono<Boolean> isHealthy() {
+        // Standardized implementation with metrics collection
+    }
+
+    protected abstract Mono<Boolean> checkProviderHealth();
+    protected abstract String getProviderName();
+}
+```
+
+This abstract base class provides:
+- Standardized SCA handling across all providers
+- Consistent error handling and response formatting
+- Comprehensive metrics collection
+- Common health check implementation
+
 #### Service Layer
 
 The service layer defines the core business operations for each payment type. Each service follows a consistent pattern with methods for:
@@ -177,6 +218,7 @@ Each service implementation handles the business logic for its specific payment 
 
 Provider interfaces define the contracts that payment providers must implement:
 
+- `BasePaymentProvider` - Common interface for all payment providers
 - `SepaPaymentProvider` - Interface for SEPA payment providers
 - `SwiftPaymentProvider` - Interface for SWIFT payment providers
 - `AchPaymentProvider` - Interface for ACH payment providers
@@ -186,7 +228,7 @@ Provider interfaces define the contracts that payment providers must implement:
 - `EbaStep2PaymentProvider` - Interface for EBA STEP2 payment providers
 - `InternalTransferProvider` - Interface for internal transfer providers
 
-These interfaces allow the system to interact with different payment providers in a consistent way.
+All provider implementations extend the `AbstractBasePaymentProvider` class, which provides standardized functionality for common operations. This approach ensures consistent behavior across all payment providers and reduces code duplication.
 
 #### DTOs (Data Transfer Objects)
 
@@ -361,14 +403,16 @@ The Payment Hub implements Strong Customer Authentication (SCA) to comply with r
 The Payment Hub's SCA implementation includes:
 
 - **Dedicated SCA Provider** - SCA is implemented as a dedicated provider interface (`ScaProvider`) with methods for triggering and validating SCA
-- **Provider Delegation** - Payment providers delegate SCA operations to the SCA provider through the `BasePaymentProvider` interface
+- **Provider Delegation** - Payment providers delegate SCA operations to the SCA provider through the `AbstractBasePaymentProvider` class
 - **Dynamic SCA Requirements** - SCA is required based on payment amount, destination country, and other risk factors
-- **Multiple Authentication Methods** - Support for SMS, email, mobile app, and biometric authentication
+- **Multiple Authentication Methods** - Support for SMS, email, mobile app, and various biometric authentication methods
+- **Advanced Biometric Authentication** - Support for fingerprint, facial recognition, voice recognition, iris scan, retina scan, palm print, vein pattern, and behavioral biometrics
 - **Challenge-Response Flow** - Secure challenge-response mechanism for authentication
 - **SCA for Critical Operations** - Authentication for payment execution, scheduling, and cancellation
 - **Comprehensive Coverage** - SCA is implemented for all payment types (SEPA, SWIFT, ACH, UK, European, Internal)
 - **Regulatory Compliance** - Complies with PSD2 requirements for European payments and similar regulations for other regions
 - **Health Monitoring** - SCA provider health is monitored through dedicated health indicators
+- **Metrics Collection** - Comprehensive metrics for SCA operations using Micrometer
 
 ### SCA Flow
 
@@ -391,7 +435,7 @@ The Payment Hub's SCA implementation includes:
    - If SCA validation is successful, the payment is processed
    - If SCA validation fails, the payment is rejected with an appropriate error message
 
-Example SCA information in a payment request:
+Example SCA information in a payment request with traditional authentication:
 
 ```json
 {
@@ -399,6 +443,18 @@ Example SCA information in a payment request:
     "method": "SMS",
     "recipient": "+34600000000",
     "authenticationCode": "123456"
+  }
+}
+```
+
+Example SCA information with biometric authentication:
+
+```json
+{
+  "sca": {
+    "method": "BIOMETRIC_FINGERPRINT",
+    "deviceId": "DEVICE-123456",
+    "biometricData": "VERIFICATION-TOKEN-123456"
   }
 }
 ```
@@ -483,6 +539,27 @@ payment:
     internal:
       enabled: true
       timeout: 10000
+  sca:
+    enabled: true
+    default-method: SMS
+    expiry-minutes: 15
+    max-attempts: 3
+    threshold-amount: 500.00
+    biometric:
+      enabled: true
+      methods:
+        - BIOMETRIC_FINGERPRINT
+        - BIOMETRIC_FACE
+        - BIOMETRIC_VOICE
+        - BIOMETRIC_IRIS
+        - BIOMETRIC_RETINA
+        - BIOMETRIC_PALM
+        - BIOMETRIC_VEIN
+        - BIOMETRIC_BEHAVIORAL
+      expiry-minutes: 5  # Shorter expiry for biometric authentication
+  metrics:
+    enabled: true
+    export-to-prometheus: true
 ```
 
 ## Usage
@@ -805,11 +882,16 @@ Note that cancellation capabilities vary by payment type:
 
 To add a new payment provider, follow these steps:
 
-1. Implement the appropriate provider interface:
+1. Implement the appropriate provider interface by extending the abstract base class:
 
 ```java
 @Component
-public class NewSepaPaymentProvider implements SepaPaymentProvider {
+public class NewSepaPaymentProvider extends AbstractBasePaymentProvider implements SepaPaymentProvider {
+
+    @Autowired
+    public NewSepaPaymentProvider(ScaProvider scaProvider) {
+        super(scaProvider);
+    }
 
     @Override
     public Mono<PaymentSimulationResultDTO> simulate(SepaPaymentRequestDTO request) {
@@ -819,6 +901,17 @@ public class NewSepaPaymentProvider implements SepaPaymentProvider {
     @Override
     public Mono<PaymentExecutionResultDTO> execute(SepaPaymentRequestDTO request) {
         // Implementation
+    }
+
+    @Override
+    protected Mono<Boolean> checkProviderHealth() {
+        // Provider-specific health check implementation
+        return Mono.just(true);
+    }
+
+    @Override
+    protected String getProviderName() {
+        return "new-sepa";
     }
 
     // Implement other methods...
