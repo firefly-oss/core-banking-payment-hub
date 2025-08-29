@@ -27,3 +27,9 @@ target/
 # Refactoring backup directories
 .refactor-backup-*/
 *.refactor-backup-*
+
+# Additional Maven patterns added Fri Aug 29 20:28:15 CEST 2025
+**/target/generated-sources/
+**/target/generated-test-sources/
+**/target/generated-resources/
+.refactor-backup-*/
