@@ -1106,7 +1106,7 @@ docker run -p 8080:8080 \
 The Payment Hub uses SLF4J for logging. You can configure the log level in your `application.properties`:
 
 ```properties
-logging.level.com.catalis.core.banking.payments=DEBUG
+logging.level.com.firefly.core.banking.payments=DEBUG
 ```
 
 For production environments, set the log level to INFO or WARN.
