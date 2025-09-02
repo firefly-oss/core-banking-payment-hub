@@ -13,6 +13,7 @@ public enum PaymentProviderType {
     TIPS_PROVIDER("TIPS instant payment provider"),
     EBA_STEP2_PROVIDER("EBA STEP2 payment provider"),
     INTERNAL_PROVIDER("Internal transfer provider"),
+    CARD_PROVIDER("Card payment provider"),
     DEFAULT_PROVIDER("Default payment provider");
 
     private final String description;
