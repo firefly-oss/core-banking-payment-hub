@@ -17,6 +17,7 @@
         <module>core-banking-payment-hub-interfaces</module>
         <module>core-banking-payment-hub-web</module>
         <module>core-banking-payment-hub-core</module>
+        <module>core-banking-payment-hub-sdk</module>
     </modules>
 
 
@@ -36,6 +37,11 @@
             <dependency>
                 <groupId>com.firefly</groupId>
                 <artifactId>core-banking-payment-hub-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.firefly</groupId>
+                <artifactId>core-banking-payment-hub-sdk</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
