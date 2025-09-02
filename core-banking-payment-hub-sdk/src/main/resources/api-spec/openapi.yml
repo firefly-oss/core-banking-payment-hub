@@ -1,0 +1,5494 @@
+openapi: 3.0.1
+info:
+  title: core-banking-payment-hub
+  description: Core Banking Payment Hub Application
+  contact:
+    name: Firefly Software Solutions Inc
+    email: dev@getfirefly.io
+  version: 1.0.0
+servers:
+  - url: http://core.catalis.vc/payment-hub
+    description: Development Environment
+  - url: /
+    description: Local Development Environment
+tags:
+  - name: SEPA Payments
+    description: Operations for SEPA payments (SCT, ICT, SDD)
+  - name: European Payments
+    description: API for European payment operations (TARGET2, TIPS, EBA STEP2)
+  - name: SWIFT Payments
+    description: Operations for SWIFT payments (MT103, MT202, PACS.008)
+  - name: Internal Transfers
+    description: Operations for internal transfers between accounts
+  - name: UK Payments
+    description: API for UK payment operations (FPS, BACS, CHAPS)
+  - name: ACH Payments
+    description: Operations for ACH payments (US bank transfers)
+paths:
+  /api/v1/payments/uk/fps/simulate:
+    post:
+      tags:
+        - UK Payments
+      summary: Simulate a UK Faster Payment
+      description: |+
+        **Simulates a UK Faster Payment without actual execution.**
+
+        This endpoint performs validation and preliminary checks without moving any funds:
+
+        - Validates the payment request data including sort code and account number
+        - Performs sort code validation against the UK payments directory
+        - Checks for sufficient funds (without placing a hold)
+        - Calculates any applicable fees
+        - Determines if Strong Customer Authentication (SCA) is required
+        - Delivers SCA code if required (via SMS or other configured channel)
+        - Returns estimated processing time (typically seconds or minutes for FPS)
+
+        **Important:** Use this endpoint before executing a payment to verify it will succeed
+        and to obtain a simulation reference that must be included in the execute request.
+
+      operationId: simulateFasterPayment
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UkFasterPaymentRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+  /api/v1/payments/uk/fps/schedule:
+    post:
+      tags:
+        - UK Payments
+      summary: Schedule a UK Faster Payment
+      description: |+
+        **Schedules a UK Faster Payment for future execution on the specified date.**
+
+        This endpoint creates a scheduled payment instruction:
+
+        - Validates the payment request data including sort code and account number
+        - Verifies the execution date is valid (must be a future date)
+        - Verifies SCA if required (using the code delivered during simulation)
+        - Creates a scheduled payment instruction
+        - Supports optional recurrence patterns for recurring payments
+
+        **Important Notes:**
+        - The payment will be automatically executed via the Faster Payments Service on the specified date
+        - Funds are not reserved until the actual execution date
+        - Recurrence patterns use standard CRON expressions to define repeating schedules
+        - Since Faster Payments operate 24/7/365, payments can be scheduled for any date
+
+      operationId: scheduleFasterPayment
+      parameters:
+        - name: executionDate
+          in: query
+          description: Execution date (YYYY-MM-DD)
+          required: true
+          schema:
+            type: string
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UkFasterPaymentRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/PaymentScheduleResultDTO'
+  /api/v1/payments/uk/fps/execute:
+    post:
+      tags:
+        - UK Payments
+      summary: Execute a UK Faster Payment
+      description: |+
+        **Executes a UK Faster Payment through the Faster Payments Service.**
+
+        This endpoint processes the actual payment transaction:
+
+        - Validates the payment request data including sort code and account number
+        - Verifies sufficient funds are available
+        - Places a hold on the funds
+        - Verifies SCA if required (using the code delivered during simulation)
+        - Submits the payment to the Faster Payments network
+        - Returns a transaction reference and confirmation details
+
+        **Settlement Time:** Faster Payments typically settle within seconds or minutes and are
+        available 24/7/365.
+
+        **Transaction Limits:** Maximum transaction limit is typically £1,000,000, but may vary by bank.
+
+        **Required Fields:**
+        - `simulationReference`: Reference from a previous successful simulation call
+        - `sca.authenticationCode`: If SCA was required during simulation
+
+      operationId: executeFasterPayment
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UkFasterPaymentRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/PaymentExecutionResultDTO'
+  /api/v1/payments/uk/fps/cancel:
+    post:
+      tags:
+        - UK Payments
+      summary: Cancel a UK Faster Payment
+      description: |+
+        **Cancels an existing UK Faster Payment with Strong Customer Authentication (SCA) support.**
+
+        This endpoint attempts to cancel a previously submitted payment:
+
+        - Validates the cancellation request
+        - Verifies the payment exists and is in a cancellable state
+        - Verifies SCA if required (using the code delivered during cancellation simulation)
+        - Attempts to cancel the payment with the Faster Payments network
+        - Returns the cancellation status and any applicable fees
+
+        **Important Limitations:**
+        - Faster Payments can only be cancelled if they haven't been settled yet
+        - Due to the near real-time nature of the service, the cancellation window may be very short
+        - Once settled, a return payment must be initiated instead
+        - A simulation reference from the `/fps/cancel/simulate` endpoint must be included for SCA verification
+
+      operationId: cancelFasterPayment
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UkCancellationRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/PaymentCancellationResultDTO'
+  /api/v1/payments/uk/fps/cancel/simulate:
+    post:
+      tags:
+        - UK Payments
+      summary: Simulate cancellation of a UK Faster Payment
+      description: |+
+        **Simulates cancellation of a UK Faster Payment without actually cancelling it.**
+
+        This endpoint is used to trigger SCA delivery and provide information about cancellation:
+
+        - Validates the cancellation request
+        - Checks if the payment exists and is in a cancellable state
+        - Determines if Strong Customer Authentication (SCA) is required for cancellation
+        - Delivers SCA code if required (via SMS or other configured channel)
+        - Returns information about cancellation feasibility, fees, and SCA requirements
+
+        **Important Notes:**
+        - The simulation reference returned must be included in the actual cancellation request
+        - This endpoint does not actually cancel the payment
+        - The cancellation window for Faster Payments is very short due to near real-time settlement
+
+      operationId: simulateFasterPaymentCancellation
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UkCancellationRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+  /api/v1/payments/uk/chaps/simulate:
+    post:
+      tags:
+        - UK Payments
+      summary: Simulate a UK CHAPS Payment
+      description: |+
+        **Simulates a UK CHAPS Payment without actual execution.**
+
+        This endpoint performs validation and preliminary checks without moving any funds:
+
+        - Validates the payment request data including sort code and account number
+        - Performs sort code validation against the CHAPS directory
+        - Checks for sufficient funds (without placing a hold)
+        - Calculates any applicable fees (CHAPS typically has higher fees)
+        - Determines if Strong Customer Authentication (SCA) is required
+        - Delivers SCA code if required (via SMS or other configured channel)
+        - Verifies the payment is within CHAPS operating hours
+        - Returns estimated settlement time (same day if before cut-off time)
+
+        **About CHAPS:**
+        - Used for high-value or time-critical payments that need same-day settlement
+        - No upper limit on transaction value
+        - Suitable for property purchases, large corporate transactions, and time-critical payments
+        - Only available during banking hours with specific cut-off times
+
+        **Important:** Use this endpoint before executing a payment to verify it will succeed
+        and to obtain a simulation reference that must be included in the execute request.
+
+      operationId: simulateChapsPayment
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UkChapsPaymentRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+  /api/v1/payments/uk/chaps/schedule:
+    post:
+      tags:
+        - UK Payments
+      summary: Schedule a UK CHAPS Payment
+      description: |+
+        **Schedules a UK CHAPS Payment for future execution on the specified date.**
+
+        This endpoint creates a scheduled payment instruction:
+
+        - Validates the payment request data including sort code and account number
+        - Verifies the execution date is valid (must be a future business day)
+        - Verifies SCA if required (using the code delivered during simulation)
+        - Creates a scheduled payment instruction
+        - Supports optional recurrence patterns for recurring payments
+
+        **Important Notes:**
+        - The payment will be automatically submitted to the CHAPS network on the specified date
+        - Funds are not reserved until the actual execution date
+        - CHAPS only operates on business days during banking hours
+        - Payments scheduled for weekends, holidays, or after cut-off times will be processed on the next business day
+        - For time-critical payments, consider the cut-off time (typically around 5:00 PM UK time)
+
+      operationId: scheduleChapsPayment
+      parameters:
+        - name: executionDate
+          in: query
+          description: Execution date (YYYY-MM-DD)
+          required: true
+          schema:
+            type: string
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UkChapsPaymentRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/PaymentScheduleResultDTO'
+  /api/v1/payments/uk/chaps/execute:
+    post:
+      tags:
+        - UK Payments
+      summary: Execute a UK CHAPS Payment
+      description: |+
+        **Executes a UK CHAPS Payment through the CHAPS network.**
+
+        This endpoint processes the actual payment transaction:
+
+        - Validates the payment request data including sort code and account number
+        - Verifies sufficient funds are available
+        - Places a hold on the funds
+        - Verifies SCA if required (using the code delivered during simulation)
+        - Verifies the payment is within CHAPS operating hours
+        - Submits the payment to the CHAPS network
+        - Returns a transaction reference and expected settlement time
+
+        **Settlement Time:** CHAPS payments settle on the same day if submitted before the cut-off time
+        (typically around 5:00 PM UK time).
+
+        **Transaction Limits:** No upper limit on transaction value, making CHAPS suitable for:
+        - Property purchases
+        - Large corporate transactions
+        - Time-critical high-value payments
+        - Treasury operations
+
+        **Required Fields:**
+        - `simulationReference`: Reference from a previous successful simulation call
+        - `sca.authenticationCode`: If SCA was required during simulation
+
+      operationId: executeChapsPayment
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UkChapsPaymentRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/PaymentExecutionResultDTO'
+  /api/v1/payments/uk/chaps/cancel:
+    post:
+      tags:
+        - UK Payments
+      summary: Cancel a UK CHAPS Payment
+      description: |+
+        **Cancels an existing UK CHAPS Payment with Strong Customer Authentication (SCA) support.**
+
+        This endpoint attempts to cancel a previously submitted payment:
+
+        - Validates the cancellation request
+        - Verifies the payment exists and is in a cancellable state
+        - Verifies SCA if required (using the code delivered during cancellation simulation)
+        - Attempts to cancel the payment with the CHAPS network
+        - Returns the cancellation status and any applicable fees
+
+        **Important Limitations:**
+        - CHAPS payments are typically difficult to cancel once submitted due to their high-priority nature
+        - Cancellation is generally only possible if the payment has not yet been settled
+        - The cancellation window is very short due to same-day settlement
+        - A simulation reference from the `/chaps/cancel/simulate` endpoint must be included for SCA verification
+
+      operationId: cancelChapsPayment
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UkCancellationRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/PaymentCancellationResultDTO'
+  /api/v1/payments/uk/chaps/cancel/simulate:
+    post:
+      tags:
+        - UK Payments
+      summary: Simulate cancellation of a UK CHAPS Payment
+      description: |+
+        **Simulates cancellation of a UK CHAPS Payment without actually cancelling it.**
+
+        This endpoint is used to trigger SCA delivery and provide information about cancellation:
+
+        - Validates the cancellation request
+        - Checks if the payment exists and is in a cancellable state
+        - Determines if Strong Customer Authentication (SCA) is required for cancellation
+        - Delivers SCA code if required (via SMS or other configured channel)
+        - Returns information about cancellation feasibility, fees, and SCA requirements
+
+        **Important Notes:**
+        - The simulation reference returned must be included in the actual cancellation request
+        - This endpoint does not actually cancel the payment
+        - CHAPS payments are typically difficult to cancel once submitted due to their high-priority nature
+        - The cancellation window is very short due to same-day settlement
+
+      operationId: simulateChapsPaymentCancellation
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UkCancellationRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+  /api/v1/payments/uk/bacs/simulate:
+    post:
+      tags:
+        - UK Payments
+      summary: Simulate a UK BACS Payment
+      description: |+
+        **Simulates a UK BACS Payment without actual execution.**
+
+        This endpoint performs validation and preliminary checks without moving any funds:
+
+        - Validates the payment request data including sort code and account number
+        - Performs sort code validation against the BACS directory
+        - Checks for sufficient funds (without placing a hold)
+        - Calculates any applicable fees
+        - Determines if Strong Customer Authentication (SCA) is required
+        - Delivers SCA code if required (via SMS or other configured channel)
+        - Returns estimated settlement date based on BACS processing cycle
+
+        **About BACS:**
+        - BACS payments follow a 3-day processing cycle
+        - Typically used for regular payments like salaries, direct debits, and supplier payments
+        - Lower cost than Faster Payments or CHAPS
+
+        **Important:** Use this endpoint before executing a payment to verify it will succeed
+        and to obtain a simulation reference that must be included in the execute request.
+
+      operationId: simulateBacsPayment
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UkBacsPaymentRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+  /api/v1/payments/uk/bacs/schedule:
+    post:
+      tags:
+        - UK Payments
+      summary: Schedule a UK BACS Payment
+      description: |+
+        **Schedules a UK BACS Payment for future execution on the specified date.**
+
+        This endpoint creates a scheduled payment instruction:
+
+        - Validates the payment request data including sort code and account number
+        - Verifies the execution date is valid (must be a future business day)
+        - Verifies SCA if required (using the code delivered during simulation)
+        - Creates a scheduled payment instruction
+        - Supports optional recurrence patterns for recurring payments
+
+        **Important Notes:**
+        - The payment will be automatically submitted to the BACS network on the specified date
+        - Funds are not reserved until the actual execution date
+        - The actual settlement will occur 2 business days after the execution date due to the BACS processing cycle
+        - BACS only processes payments on business days
+        - Payments scheduled for weekends or holidays will be processed on the next business day
+
+      operationId: scheduleBacsPayment
+      parameters:
+        - name: executionDate
+          in: query
+          description: Execution date (YYYY-MM-DD)
+          required: true
+          schema:
+            type: string
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UkBacsPaymentRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/PaymentScheduleResultDTO'
+  /api/v1/payments/uk/bacs/execute:
+    post:
+      tags:
+        - UK Payments
+      summary: Execute a UK BACS Payment
+      description: |+
+        **Executes a UK BACS Payment through the BACS network.**
+
+        This endpoint processes the actual payment transaction:
+
+        - Validates the payment request data including sort code and account number
+        - Verifies sufficient funds are available
+        - Places a hold on the funds
+        - Verifies SCA if required (using the code delivered during simulation)
+        - Submits the payment to the BACS network
+        - Returns a transaction reference and expected settlement date
+
+        **Settlement Time:** BACS payments follow a 3-day processing cycle:
+        - Submit on day 1
+        - Process on day 2
+        - Complete on day 3
+
+        **Common Uses:**
+        - Salary and wage payments
+        - Direct Debits for regular bills
+        - Supplier payments
+        - Regular business-to-business transfers
+
+        **Required Fields:**
+        - `simulationReference`: Reference from a previous successful simulation call
+        - `sca.authenticationCode`: If SCA was required during simulation
+
+      operationId: executeBacsPayment
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UkBacsPaymentRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/PaymentExecutionResultDTO'
+  /api/v1/payments/uk/bacs/cancel:
+    post:
+      tags:
+        - UK Payments
+      summary: Cancel a UK BACS Payment
+      description: |+
+        **Cancels an existing UK BACS Payment with Strong Customer Authentication (SCA) support.**
+
+        This endpoint attempts to cancel a previously submitted payment:
+
+        - Validates the cancellation request
+        - Verifies the payment exists and is in a cancellable state
+        - Verifies SCA if required (using the code delivered during cancellation simulation)
+        - Attempts to cancel the payment with the BACS network
+        - Returns the cancellation status and any applicable fees
+
+        **Important Limitations:**
+        - BACS payments can typically be cancelled up until the end of the submission day (day 1 of the 3-day cycle)
+        - Once the payment has moved to processing (day 2), cancellation is no longer possible
+        - A simulation reference from the `/bacs/cancel/simulate` endpoint must be included for SCA verification
+
+      operationId: cancelBacsPayment
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UkCancellationRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/PaymentCancellationResultDTO'
+  /api/v1/payments/uk/bacs/cancel/simulate:
+    post:
+      tags:
+        - UK Payments
+      summary: Simulate cancellation of a UK BACS Payment
+      description: |+
+        **Simulates cancellation of a UK BACS Payment without actually cancelling it.**
+
+        This endpoint is used to trigger SCA delivery and provide information about cancellation:
+
+        - Validates the cancellation request
+        - Checks if the payment exists and is in a cancellable state
+        - Determines if Strong Customer Authentication (SCA) is required for cancellation
+        - Delivers SCA code if required (via SMS or other configured channel)
+        - Returns information about cancellation feasibility, fees, and SCA requirements
+
+        **Important Notes:**
+        - The simulation reference returned must be included in the actual cancellation request
+        - This endpoint does not actually cancel the payment
+        - BACS payments can typically be cancelled up until the end of the submission day (day 1 of the 3-day cycle)
+        - Cancellation window depends on the BACS processing schedule and cut-off times
+
+      operationId: simulateBacsPaymentCancellation
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UkCancellationRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+  /api/v1/payments/swift/simulate:
+    post:
+      tags:
+        - SWIFT Payments
+      summary: Simulate a SWIFT payment
+      description: |+
+        **Simulates a SWIFT payment without actual execution.**
+
+        This endpoint performs validation and preliminary checks without moving any funds:
+
+        - Validates the payment request data including BIC codes and account details
+        - Verifies the receiving bank is reachable through the SWIFT network
+        - Checks for sufficient funds (without placing a hold)
+        - Calculates applicable fees (which can be significant for SWIFT transfers)
+        - Determines if Strong Customer Authentication (SCA) is required based on amount and destination
+        - Delivers SCA code if required (via SMS or other configured channel)
+        - Returns estimated settlement date and routing information
+
+        **Important:** Use this endpoint before executing a payment to verify it will succeed
+        and to obtain a simulation reference that must be included in the execute request.
+
+      operationId: simulatePayment
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SwiftPaymentRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: Simulation successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+  /api/v1/payments/swift/schedule:
+    post:
+      tags:
+        - SWIFT Payments
+      summary: Schedule a SWIFT payment
+      description: |+
+        **Schedules a SWIFT payment for future execution on the specified date.**
+
+        This endpoint creates a scheduled payment instruction:
+
+        - Validates the payment request data including BIC codes and account details
+        - Verifies the execution date is valid (must be a future business day)
+        - Verifies SCA if required (using the code delivered during simulation)
+        - Creates a scheduled payment instruction
+        - Supports optional recurrence patterns for recurring payments
+
+        **Important Notes:**
+        - The payment will be automatically submitted to the SWIFT network on the specified date
+        - Funds are not reserved until the actual execution date
+        - SWIFT payments are typically processed only on business days
+        - Payments scheduled for weekends or holidays will be processed on the next business day
+
+      operationId: schedulePayment
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SwiftScheduleRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: Scheduling successful or pending SCA
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentScheduleResultDTO'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentScheduleResultDTO'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentScheduleResultDTO'
+  /api/v1/payments/swift/execute:
+    post:
+      tags:
+        - SWIFT Payments
+      summary: Execute a SWIFT payment
+      description: |+
+        **Executes a SWIFT payment through the SWIFT network.**
+
+        This endpoint processes the actual payment transaction:
+
+        - Validates the payment request data including BIC codes and account details
+        - Verifies sufficient funds are available
+        - Places a hold on the funds
+        - Verifies SCA if required (using the code delivered during simulation)
+        - Submits the payment to the SWIFT network
+        - Returns a transaction reference and expected settlement date
+
+        **Settlement Time:** SWIFT payments typically settle within 1-3 business days depending
+        on the destination country and currency.
+
+        **Important Notes:**
+        - Correspondent banks may be involved in the payment chain
+        - This can affect settlement time and may incur additional fees
+        - Include the simulation reference if SCA was required
+
+      operationId: executePayment
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SwiftPaymentRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: Execution successful or pending SCA
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentExecutionResultDTO'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentExecutionResultDTO'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentExecutionResultDTO'
+  /api/v1/payments/swift/cancel/simulate:
+    post:
+      tags:
+        - SWIFT Payments
+      summary: Simulate cancellation of a SWIFT payment
+      description: |+
+        **Simulates cancellation of a SWIFT payment without actually cancelling it.**
+
+        This endpoint is used to trigger SCA delivery and provide information about cancellation:
+
+        - Validates the cancellation request
+        - Checks if the payment exists and is in a cancellable state
+        - Determines if Strong Customer Authentication (SCA) is required for cancellation
+        - Delivers SCA code if required (via SMS or other configured channel)
+        - Returns information about cancellation feasibility, fees, and SCA requirements
+
+        **Important Notes:**
+        - The simulation reference returned must be included in the actual cancellation request
+        - This endpoint does not actually cancel the payment
+        - SWIFT payments can be difficult to cancel once they've entered the correspondent banking network
+
+      operationId: simulateCancellation
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SwiftCancellationRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: Simulation successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+        '404':
+          description: Payment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+  /api/v1/payments/swift/cancel:
+    post:
+      tags:
+        - SWIFT Payments
+      summary: Cancel a SWIFT payment
+      description: |+
+        **Cancels an existing SWIFT payment with Strong Customer Authentication (SCA) support.**
+
+        This endpoint attempts to cancel a previously submitted payment:
+
+        - Validates the cancellation request
+        - Verifies the payment exists and is in a cancellable state
+        - Verifies SCA if required (using the code delivered during cancellation simulation)
+        - Attempts to cancel the payment with the SWIFT network
+        - Returns the cancellation status and any applicable fees
+
+        **Important Limitations:**
+        - SWIFT payments can only be cancelled if they haven't been settled yet
+        - Once a payment has been processed by correspondent banks, cancellation may not be possible
+        - A separate return payment might be required if cancellation fails
+        - A simulation reference from the `/cancel/simulate` endpoint must be included for SCA verification
+
+      operationId: cancelPayment
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SwiftCancellationRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: Cancellation successful or pending SCA
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentCancellationResultDTO'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentCancellationResultDTO'
+        '404':
+          description: Payment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentCancellationResultDTO'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentCancellationResultDTO'
+  /api/v1/payments/sepa/simulate:
+    post:
+      tags:
+        - SEPA Payments
+      summary: Simulate a SEPA payment
+      description: |+
+        **Simulates a SEPA payment without actual execution.**
+
+        This endpoint performs validation and preliminary checks without moving any funds:
+
+        - Validates the payment request data including IBAN and BIC
+        - Verifies the receiving bank is reachable through SEPA
+        - Checks for sufficient funds (without placing a hold)
+        - Calculates any applicable fees
+        - Determines if Strong Customer Authentication (SCA) is required based on amount and risk
+        - Delivers SCA code if required (via SMS or other configured channel)
+        - Returns estimated settlement date based on the SEPA scheme (standard or instant)
+
+        **Important:** Use this endpoint before executing a payment to verify it will succeed
+        and to obtain a simulation reference that must be included in the execute request.
+
+      operationId: simulatePayment_1
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SepaPaymentRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: Simulation successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+  /api/v1/payments/sepa/schedule:
+    post:
+      tags:
+        - SEPA Payments
+      summary: Schedule a SEPA payment
+      description: |+
+        **Schedules a SEPA payment for future execution on the specified date.**
+
+        This endpoint creates a scheduled payment instruction:
+
+        - Validates the payment request data including IBAN and BIC
+        - Verifies the execution date is valid (must be a future date for SCT, or a valid collection date for SDD)
+        - Verifies SCA if required (using the code delivered during simulation)
+        - Creates a scheduled payment instruction
+        - Supports optional recurrence patterns for recurring payments
+
+        **Important Notes:**
+        - The payment will be automatically submitted to the SEPA network on the specified date
+        - Funds are not reserved until the actual execution date
+        - For SEPA Direct Debits, specific rules apply regarding advance notification and mandate validation
+        - Recurrence patterns use standard CRON expressions to define repeating schedules
+
+      operationId: schedulePayment_1
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SepaScheduleRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: Scheduling successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentScheduleResultDTO'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentScheduleResultDTO'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentScheduleResultDTO'
+  /api/v1/payments/sepa/execute:
+    post:
+      tags:
+        - SEPA Payments
+      summary: Execute a SEPA payment
+      description: |+
+        **Executes a SEPA payment through the SEPA network.**
+
+        This endpoint processes the actual payment transaction:
+
+        - Validates the payment request data including IBAN and BIC
+        - Verifies sufficient funds are available
+        - Places a hold on the funds
+        - Verifies SCA if required (using the code delivered during simulation)
+        - Submits the payment to the SEPA network
+        - Returns a transaction reference and expected settlement date
+
+        **Settlement Times:**
+        - Standard SEPA Credit Transfers (SCT): typically settle within 1 business day
+        - SEPA Instant Credit Transfers (SCT Inst): settle within 10 seconds
+        - SEPA Direct Debits (SDD): follow specific settlement cycles based on the scheme
+
+        **Required Fields:**
+        - `simulationReference`: Reference from a previous successful simulation call
+        - `sca.authenticationCode`: If SCA was required during simulation
+
+      operationId: executePayment_1
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SepaPaymentRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: Execution successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentExecutionResultDTO'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentExecutionResultDTO'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentExecutionResultDTO'
+  /api/v1/payments/sepa/cancel/simulate:
+    post:
+      tags:
+        - SEPA Payments
+      summary: Simulate cancellation of a SEPA payment
+      description: |+
+        **Simulates cancellation of a SEPA payment without actually cancelling it.**
+
+        This endpoint is used to trigger SCA delivery and provide information about cancellation:
+
+        - Validates the cancellation request
+        - Checks if the payment exists and is in a cancellable state
+        - Determines if Strong Customer Authentication (SCA) is required for cancellation
+        - Delivers SCA code if required (via SMS or other configured channel)
+        - Returns information about cancellation feasibility, fees, and SCA requirements
+
+        **Important Notes:**
+        - The simulation reference returned must be included in the actual cancellation request
+        - This endpoint does not actually cancel the payment
+        - For SEPA Instant Credit Transfers, the cancellation window is very short due to real-time settlement
+        - For SEPA Direct Debits, specific rules apply for cancellation before the collection date
+
+      operationId: simulateCancellation_1
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SepaCancellationRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: Simulation successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+        '404':
+          description: Payment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+  /api/v1/payments/sepa/cancel:
+    post:
+      tags:
+        - SEPA Payments
+      summary: Cancel a SEPA payment
+      description: |+
+        **Cancels an existing SEPA payment with Strong Customer Authentication (SCA) support.**
+
+        This endpoint attempts to cancel a previously submitted payment:
+
+        - Validates the cancellation request
+        - Verifies the payment exists and is in a cancellable state
+        - Verifies SCA if required (using the code delivered during cancellation simulation)
+        - Attempts to cancel the payment with the SEPA network
+        - Returns the cancellation status and any applicable fees
+
+        **Important Limitations:**
+        - SEPA payments can only be cancelled if they haven't been settled yet
+        - For SEPA Instant Credit Transfers, the cancellation window is very short due to real-time settlement
+        - For SEPA Direct Debits, specific rules apply for cancellation before the collection date
+        - A simulation reference from the `/cancel/simulate` endpoint must be included for SCA verification
+
+      operationId: cancelPayment_1
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SepaCancellationRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: Cancellation successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentCancellationResultDTO'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentCancellationResultDTO'
+        '404':
+          description: Payment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentCancellationResultDTO'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentCancellationResultDTO'
+  /api/v1/payments/internal/simulate:
+    post:
+      tags:
+        - Internal Transfers
+      summary: Simulate an internal transfer
+      description: |+
+        **Simulates an internal transfer without actual execution.**
+
+        This endpoint performs validation and preliminary checks without moving any funds:
+
+        - Validates the transfer request data and account ownership
+        - Checks for sufficient funds in the source account
+        - Verifies account status (not frozen, closed, etc.)
+        - Calculates any applicable fees (typically none for internal transfers)
+        - Determines if Strong Customer Authentication (SCA) is required based on amount and risk
+        - Delivers SCA code if required (via SMS or other configured channel)
+        - Returns a simulation reference to be used in the execute endpoint
+
+        **Important:** Use this endpoint before executing a transfer to verify it will succeed
+        and to complete any required SCA process.
+
+      operationId: simulateTransfer
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InternalTransferRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: Simulation successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+  /api/v1/payments/internal/schedule:
+    post:
+      tags:
+        - Internal Transfers
+      summary: Schedule an internal transfer
+      description: |+
+        **Schedules an internal transfer for future execution on the specified date.**
+
+        This endpoint creates a scheduled transfer instruction:
+
+        - Validates the transfer request data and account ownership
+        - Verifies the execution date is valid (must be a future date)
+        - Verifies SCA if required (using the code delivered during simulation)
+        - Creates a scheduled transfer instruction
+        - Supports optional recurrence patterns for recurring transfers
+        - Returns a schedule reference and confirmation details
+
+        **Important Notes:**
+        - The transfer will be automatically executed on the specified date
+        - Funds are not reserved until the actual execution date
+        - Recurrence patterns use standard CRON expressions to define repeating schedules
+        - Examples: `0 0 1 * *` (monthly on the 1st), `0 0 * * 1` (every Monday)
+
+      operationId: scheduleTransfer
+      parameters:
+        - name: executionDate
+          in: query
+          description: 'Execution date (ISO format: YYYY-MM-DD)'
+          required: true
+          schema:
+            type: string
+        - name: recurrencePattern
+          in: query
+          description: Recurrence pattern (CRON expression)
+          required: false
+          schema:
+            type: string
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InternalTransferRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: Scheduling successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentScheduleResultDTO'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentScheduleResultDTO'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentScheduleResultDTO'
+  /api/v1/payments/internal/execute:
+    post:
+      tags:
+        - Internal Transfers
+      summary: Execute an internal transfer
+      description: |+
+        **Executes an internal transfer between accounts.**
+
+        This endpoint processes the actual transfer transaction:
+
+        - Validates the transfer request data and account ownership
+        - Verifies sufficient funds are available in the source account
+        - Verifies SCA if required (using the code delivered during simulation)
+        - Debits the source account and credits the destination account
+        - Creates transaction records for both accounts
+        - Returns a transaction reference and confirmation details
+
+        **Settlement Time:** Internal transfers are typically processed immediately, with funds
+        available to the recipient right away.
+
+        **Required Fields:**
+        - `simulationReference`: Reference from a previous successful simulation call
+        - `sca.authenticationCode`: If SCA was required during simulation
+
+      operationId: executeTransfer
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InternalTransferRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: Execution successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentExecutionResultDTO'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentExecutionResultDTO'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentExecutionResultDTO'
+  /api/v1/payments/internal/cancel/simulate:
+    post:
+      tags:
+        - Internal Transfers
+      summary: Simulate cancellation of an internal transfer
+      description: |+
+        **Simulates cancellation of an internal transfer without actually cancelling it.**
+
+        This endpoint is used to trigger SCA delivery and provide information about cancellation:
+
+        - Validates the cancellation request and verifies authorization
+        - Checks if the transfer exists and is in a cancellable state
+        - Determines if Strong Customer Authentication (SCA) is required for cancellation
+        - Delivers SCA code if required (via SMS or other configured channel)
+        - Returns information about cancellation feasibility and SCA requirements
+        - Provides a simulation reference to be used in the actual cancellation request
+
+        **Important:** This endpoint does not actually cancel the transfer. Use the returned
+        simulation reference in the subsequent call to the `/cancel` endpoint.
+
+      operationId: simulateCancellation_2
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InternalTransferCancellationRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: Simulation successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+        '404':
+          description: Transfer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+  /api/v1/payments/internal/cancel:
+    post:
+      tags:
+        - Internal Transfers
+      summary: Cancel an internal transfer
+      description: |+
+        **Cancels an existing internal transfer with Strong Customer Authentication (SCA) support.**
+
+        This endpoint attempts to cancel a previously submitted transfer:
+
+        - Validates the cancellation request and verifies authorization
+        - Checks if the transfer exists and is in a cancellable state
+        - Verifies SCA if required (using the code delivered during cancellation simulation)
+        - Reverses the transfer by crediting the source account and debiting the destination account
+        - Creates reversal transaction records for both accounts
+        - Returns the cancellation status and confirmation details
+
+        **Important Limitations:**
+        - Only pending or scheduled transfers can be cancelled
+        - Completed transfers require a new transfer in the opposite direction
+        - A simulation reference from the `/cancel/simulate` endpoint must be included for SCA verification
+
+      operationId: cancelTransfer
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InternalTransferCancellationRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: Cancellation successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentCancellationResultDTO'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentCancellationResultDTO'
+        '404':
+          description: Transfer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentCancellationResultDTO'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentCancellationResultDTO'
+  /api/v1/payments/european/tips/simulate:
+    post:
+      tags:
+        - European Payments
+      summary: Simulate a TIPS payment
+      description: |+
+        **Simulates a TIPS payment without actual execution.**
+
+        The simulation process:
+
+        - Validates the payment request data including IBAN and BIC
+        - Verifies the receiving bank is a TIPS participant
+        - Checks for sufficient funds (without placing a hold)
+        - Verifies the payment amount is within TIPS limits (currently €100,000)
+        - Calculates any applicable fees
+        - Determines if Strong Customer Authentication (SCA) is required
+        - Delivers SCA code if required (via SMS or other configured channel)
+
+        **About TIPS:**
+        - TIPS (TARGET Instant Payment Settlement) is an instant payment service available 24/7/365
+        - Settles payments in central bank money in seconds
+        - Designed for retail payments requiring immediate settlement
+
+        **Important:**
+        - Use this endpoint before executing a payment to verify it will succeed
+        - The simulation reference must be included in the execute request if SCA is required
+
+      operationId: simulateTipsPayment
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TipsPaymentRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+  /api/v1/payments/european/tips/schedule:
+    post:
+      tags:
+        - European Payments
+      summary: Schedule a TIPS payment
+      description: |+
+        **Schedules a TIPS payment for future execution on the specified date.**
+
+        This endpoint creates a scheduled payment instruction:
+
+        - Validates the payment request data including IBAN and BIC
+        - Verifies the execution date is valid (must be a future date)
+        - Verifies the payment amount is within TIPS limits (currently €100,000)
+        - Verifies SCA if required
+        - Creates a scheduled payment instruction
+        - Supports optional recurrence patterns for recurring payments
+
+        **Important Notes:**
+        - The payment will be automatically submitted to the TIPS network on the specified date
+        - Funds are not reserved until the actual execution date
+        - Since TIPS operates 24/7/365, payments can be scheduled for any date
+        - This includes weekends and holidays
+
+      operationId: scheduleTipsPayment
+      parameters:
+        - name: executionDate
+          in: query
+          description: Execution date (YYYY-MM-DD)
+          required: true
+          schema:
+            type: string
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TipsPaymentRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/PaymentScheduleResultDTO'
+  /api/v1/payments/european/tips/execute:
+    post:
+      tags:
+        - European Payments
+      summary: Execute a TIPS payment
+      description: |+
+        **Executes a TIPS payment through the TIPS network.**
+
+        This operation:
+
+        - Validates the payment request data including IBAN and BIC
+        - Verifies sufficient funds are available
+        - Places a hold on the funds
+        - Verifies SCA if required (using the code delivered during simulation)
+        - Verifies the payment amount is within TIPS limits (currently €100,000)
+        - Submits the payment to the TIPS network
+        - Returns a transaction reference and confirmation of instant settlement
+
+        **Settlement Information:**
+        - TIPS payments settle in real-time (typically within 10 seconds) with immediate finality
+        - Available 24/7/365 including weekends and holidays
+        - Used for retail payments requiring immediate settlement
+        - Current maximum amount is €100,000 per transaction
+
+      operationId: executeTipsPayment
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TipsPaymentRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/PaymentExecutionResultDTO'
+  /api/v1/payments/european/tips/cancel:
+    post:
+      tags:
+        - European Payments
+      summary: Cancel a TIPS payment
+      description: |+
+        **Cancels an existing TIPS payment with Strong Customer Authentication (SCA) support.**
+
+        The process:
+
+        - Validates the cancellation request
+        - Verifies the payment exists and is in a cancellable state
+        - Verifies SCA if required (using the code delivered during cancellation simulation)
+        - Attempts to cancel the payment with the TIPS network
+        - Returns the cancellation status and any applicable fees
+
+        **Important Limitations:**
+        - TIPS payments are extremely difficult to cancel once submitted due to their instant settlement nature
+        - Settlement typically occurs within 10 seconds
+        - Cancellation is generally only possible if the payment is still in a queued state
+        - Include the simulation reference from the /tips/cancel/simulate endpoint for SCA verification
+
+      operationId: cancelTipsPayment
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TipsCancellationRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/PaymentCancellationResultDTO'
+  /api/v1/payments/european/tips/cancel/simulate:
+    post:
+      tags:
+        - European Payments
+      summary: Simulate cancellation of a TIPS payment
+      description: |+
+        **Simulates cancellation of a TIPS payment to trigger SCA delivery and provide information.**
+
+        The process:
+
+        - Validates the cancellation request
+        - Checks if the payment exists and is in a cancellable state
+        - Determines if Strong Customer Authentication (SCA) is required for cancellation
+        - Delivers SCA code if required (via SMS or other configured channel)
+        - Returns information about cancellation feasibility, fees, and SCA requirements
+
+        **Important Notes:**
+        - The simulation reference returned should be included in the actual cancellation request
+        - This endpoint does not actually cancel the payment
+        - TIPS payments are extremely difficult to cancel once submitted due to their instant settlement nature
+        - Settlement typically occurs within 10 seconds
+
+      operationId: simulateTipsPaymentCancellation
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TipsCancellationRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+  /api/v1/payments/european/target2/simulate:
+    post:
+      tags:
+        - European Payments
+      summary: Simulate a TARGET2 payment
+      description: |+
+        **Simulates a TARGET2 payment without actual execution.**
+
+        The simulation process:
+
+        - Validates the payment request data including IBAN and BIC
+        - Verifies the receiving bank is a TARGET2 participant
+        - Checks for sufficient funds (without placing a hold)
+        - Calculates any applicable fees
+        - Determines if Strong Customer Authentication (SCA) is required
+        - Delivers SCA code if required (via SMS or other configured channel)
+        - Verifies the payment is within TARGET2 operating hours
+        - Returns estimated settlement time (same day if before cut-off time)
+
+        **Important Notes:**
+        - TARGET2 is used for high-value, time-critical euro payments between financial institutions
+        - Use this endpoint before executing a payment to verify it will succeed
+        - The simulation reference returned must be included in the execute request if SCA is required
+
+      operationId: simulateTarget2Payment
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Target2PaymentRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+  /api/v1/payments/european/target2/schedule:
+    post:
+      tags:
+        - European Payments
+      summary: Schedule a TARGET2 payment
+      description: |+
+        **Schedules a TARGET2 payment for future execution on the specified date.**
+
+        This endpoint creates a scheduled payment instruction:
+
+        - Validates the payment request data including IBAN and BIC
+        - Verifies the execution date is valid (must be a future TARGET2 business day)
+        - Verifies SCA if required
+        - Creates a scheduled payment instruction
+        - Supports optional recurrence patterns for recurring payments
+
+        **Important Notes:**
+        - The payment will be automatically submitted to the TARGET2 network on the specified date
+        - Funds are not reserved until the actual execution date
+        - TARGET2 only operates on business days
+        - Payments scheduled for weekends or holidays will be processed on the next business day
+
+      operationId: scheduleTarget2Payment
+      parameters:
+        - name: executionDate
+          in: query
+          description: Execution date (YYYY-MM-DD)
+          required: true
+          schema:
+            type: string
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Target2PaymentRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/PaymentScheduleResultDTO'
+  /api/v1/payments/european/target2/execute:
+    post:
+      tags:
+        - European Payments
+      summary: Execute a TARGET2 payment
+      description: |+
+        **Executes a TARGET2 payment through the TARGET2 network.**
+
+        This operation:
+
+        - Validates the payment request data including IBAN and BIC
+        - Verifies sufficient funds are available
+        - Places a hold on the funds
+        - Verifies SCA if required (using the code delivered during simulation)
+        - Verifies the payment is within TARGET2 operating hours
+        - Submits the payment to the TARGET2 network
+        - Returns a transaction reference and expected settlement time
+
+        **Settlement Information:**
+        - TARGET2 payments settle in real-time with immediate finality
+        - Operating hours are typically 7:00 AM to 6:00 PM CET on TARGET2 business days
+        - Used for high-value, time-critical euro payments between financial institutions
+
+      operationId: executeTarget2Payment
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Target2PaymentRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/PaymentExecutionResultDTO'
+  /api/v1/payments/european/target2/cancel:
+    post:
+      tags:
+        - European Payments
+      summary: Cancel a TARGET2 payment
+      description: |+
+        **Cancels an existing TARGET2 payment with Strong Customer Authentication (SCA) support.**
+
+        The process:
+
+        - Validates the cancellation request
+        - Verifies the payment exists and is in a cancellable state
+        - Verifies SCA if required (using the code delivered during cancellation simulation)
+        - Attempts to cancel the payment with the TARGET2 network
+        - Returns the cancellation status and any applicable fees
+
+        **Important Limitations:**
+        - TARGET2 payments are typically difficult to cancel once submitted due to their real-time settlement nature
+        - Cancellation is generally only possible if the payment has not yet been settled
+        - Include the simulation reference from the /target2/cancel/simulate endpoint for SCA verification
+
+      operationId: cancelTarget2Payment
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Target2CancellationRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/PaymentCancellationResultDTO'
+  /api/v1/payments/european/target2/cancel/simulate:
+    post:
+      tags:
+        - European Payments
+      summary: Simulate cancellation of a TARGET2 payment
+      description: |+
+        **Simulates cancellation of a TARGET2 payment to trigger SCA delivery and provide information.**
+
+        The process:
+
+        - Validates the cancellation request
+        - Checks if the payment exists and is in a cancellable state
+        - Determines if Strong Customer Authentication (SCA) is required for cancellation
+        - Delivers SCA code if required (via SMS or other configured channel)
+        - Returns information about cancellation feasibility, fees, and SCA requirements
+
+        **Important Notes:**
+        - The simulation reference returned should be included in the actual cancellation request
+        - This endpoint does not actually cancel the payment
+        - TARGET2 payments are typically difficult to cancel once submitted due to their real-time settlement nature
+
+      operationId: simulateTarget2PaymentCancellation
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Target2CancellationRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+  /api/v1/payments/european/step2/simulate:
+    post:
+      tags:
+        - European Payments
+      summary: Simulate an EBA STEP2 payment
+      description: |+
+        **Simulates an EBA STEP2 payment without actual execution.**
+
+        The simulation process:
+
+        - Validates the payment request data including IBAN and BIC
+        - Verifies the receiving bank is reachable through EBA STEP2
+        - Checks for sufficient funds (without placing a hold)
+        - Calculates any applicable fees
+        - Determines if Strong Customer Authentication (SCA) is required
+        - Delivers SCA code if required (via SMS or other configured channel)
+        - Returns estimated settlement date based on STEP2 processing cycles
+
+        **About EBA STEP2:**
+        - Pan-European Automated Clearing House for bulk euro payments
+        - Processes both SEPA Credit Transfers and SEPA Direct Debits
+        - Operates on a batch processing model with multiple daily cycles
+        - Typically settles within 1 business day
+
+      operationId: simulateEbaStep2Payment
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EbaStep2PaymentRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+  /api/v1/payments/european/step2/schedule:
+    post:
+      tags:
+        - European Payments
+      summary: Schedule an EBA STEP2 payment
+      description: |+
+        **Schedules an EBA STEP2 payment for future execution on the specified date.**
+
+        This endpoint creates a scheduled payment instruction:
+
+        - Validates the payment request data including IBAN and BIC
+        - Verifies the execution date is valid (must be a future business day)
+        - Verifies SCA if required
+        - Creates a scheduled payment instruction
+        - Supports optional recurrence patterns for recurring payments
+
+        **Important Notes:**
+        - The payment will be automatically submitted to the EBA STEP2 network on the specified date
+        - Funds are not reserved until the actual execution date
+        - EBA STEP2 only processes payments on business days
+        - Payments scheduled for weekends or holidays will be processed on the next business day
+
+      operationId: scheduleEbaStep2Payment
+      parameters:
+        - name: executionDate
+          in: query
+          description: Execution date (YYYY-MM-DD)
+          required: true
+          schema:
+            type: string
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EbaStep2PaymentRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/PaymentScheduleResultDTO'
+  /api/v1/payments/european/step2/execute:
+    post:
+      tags:
+        - European Payments
+      summary: Execute an EBA STEP2 payment
+      description: |+
+        **Executes an EBA STEP2 payment through the EBA STEP2 network.**
+
+        This operation:
+
+        - Validates the payment request data including IBAN and BIC
+        - Verifies sufficient funds are available
+        - Places a hold on the funds
+        - Verifies SCA if required (using the code delivered during simulation)
+        - Submits the payment to the EBA STEP2 network
+        - Returns a transaction reference and expected settlement date
+
+        **Settlement Information:**
+        - EBA STEP2 payments are processed in batches with multiple daily cycles
+        - Payments are typically settled within 1 business day
+        - STEP2 is used for SEPA Credit Transfers and SEPA Direct Debits
+        - Covers the entire Single Euro Payments Area
+
+      operationId: executeEbaStep2Payment
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EbaStep2PaymentRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/PaymentExecutionResultDTO'
+  /api/v1/payments/european/step2/cancel:
+    post:
+      tags:
+        - European Payments
+      summary: Cancel an EBA STEP2 payment
+      description: |+
+        **Cancels an existing EBA STEP2 payment with Strong Customer Authentication (SCA) support.**
+
+        The process:
+
+        - Validates the cancellation request
+        - Verifies the payment exists and is in a cancellable state
+        - Verifies SCA if required (using the code delivered during cancellation simulation)
+        - Attempts to cancel the payment with the EBA STEP2 network
+        - Returns the cancellation status and any applicable fees
+
+        **Important Notes:**
+        - EBA STEP2 payments can typically be cancelled if they haven't been included in a processing cycle yet
+        - Include the simulation reference from the /step2/cancel/simulate endpoint for SCA verification
+        - Cancellation becomes more difficult once the payment has been included in a batch
+
+      operationId: cancelEbaStep2Payment
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EbaStep2CancellationRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/PaymentCancellationResultDTO'
+  /api/v1/payments/european/step2/cancel/simulate:
+    post:
+      tags:
+        - European Payments
+      summary: Simulate cancellation of an EBA STEP2 payment
+      description: |+
+        **Simulates cancellation of an EBA STEP2 payment to trigger SCA delivery and provide information.**
+
+        The process:
+
+        - Validates the cancellation request
+        - Checks if the payment exists and is in a cancellable state
+        - Determines if Strong Customer Authentication (SCA) is required for cancellation
+        - Delivers SCA code if required (via SMS or other configured channel)
+        - Returns information about cancellation feasibility, fees, and SCA requirements
+
+        **Important Notes:**
+        - The simulation reference returned should be included in the actual cancellation request
+        - This endpoint does not actually cancel the payment
+        - EBA STEP2 payments can typically be cancelled if they haven't been included in a processing cycle yet
+        - Once a payment has been included in a batch, cancellation may not be possible
+
+      operationId: simulateEbaStep2PaymentCancellation
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EbaStep2CancellationRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+  /api/v1/payments/ach/simulate:
+    post:
+      tags:
+        - ACH Payments
+      summary: Simulate an ACH payment
+      description: |
+        **Simulates an ACH payment without actual execution.**
+
+        This endpoint performs validation and preliminary checks without moving any funds:
+
+        - Validates the payment request data and routing numbers
+        - Checks for sufficient funds (without placing a hold)
+        - Calculates any applicable fees and exchange rates
+        - Determines if Strong Customer Authentication (SCA) is required
+        - Delivers SCA code if required (via SMS or other configured channel)
+        - Returns estimated settlement date and processing information
+
+        **Important:** Use this endpoint before executing a payment to verify it will succeed
+        and to obtain a simulation reference that must be included in the execute request.
+      operationId: simulatePayment_2
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AchTransferRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: Simulation successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+  /api/v1/payments/ach/schedule:
+    post:
+      tags:
+        - ACH Payments
+      summary: Schedule an ACH payment
+      description: |
+        **Schedules an ACH payment for future execution on the specified date.**
+
+        This endpoint creates a scheduled payment instruction:
+
+        - Validates the payment request data and routing numbers
+        - Verifies the execution date is valid (must be a future business day)
+        - Verifies SCA if required (using the code delivered during simulation)
+        - Creates a scheduled payment instruction
+        - Supports optional recurrence patterns for recurring payments
+
+        **Important Notes:**
+        - The payment will be automatically executed on the specified date
+        - Funds are not reserved until the actual execution date
+        - Recurrence patterns use standard CRON expressions (e.g., `0 0 1 * *` for monthly on the 1st)
+        - ACH payments are not processed on weekends or federal holidays
+      operationId: schedulePayment_2
+      parameters:
+        - name: executionDate
+          in: query
+          description: 'Execution date (ISO format: YYYY-MM-DD)'
+          required: true
+          schema:
+            type: string
+        - name: recurrencePattern
+          in: query
+          description: Recurrence pattern (CRON expression)
+          required: false
+          schema:
+            type: string
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AchTransferRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: Scheduling successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentScheduleResultDTO'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentScheduleResultDTO'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentScheduleResultDTO'
+  /api/v1/payments/ach/execute:
+    post:
+      tags:
+        - ACH Payments
+      summary: Execute an ACH payment
+      description: |
+        **Executes an ACH payment by submitting it to the ACH network.**
+
+        This endpoint processes the actual payment transaction:
+
+        - Validates the payment request data and routing numbers
+        - Verifies sufficient funds are available in the source account
+        - Places a hold on the funds
+        - Verifies SCA if required (using the code delivered during simulation)
+        - Submits the payment to the ACH network
+        - Returns a transaction reference and expected settlement date
+
+        **Settlement Time:** ACH payments typically settle in 1-3 business days depending on processing windows.
+
+        **Required Fields:**
+        - `simulationReference`: Reference from a previous successful simulation call
+        - `sca.authenticationCode`: If SCA was required during simulation
+      operationId: executePayment_2
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AchTransferRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: Execution successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentExecutionResultDTO'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentExecutionResultDTO'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentExecutionResultDTO'
+  /api/v1/payments/ach/cancel/simulate:
+    post:
+      tags:
+        - ACH Payments
+      summary: Simulate cancellation of an ACH payment
+      description: |
+        **Simulates cancellation of an ACH payment without actually cancelling it.**
+
+        This endpoint is used to trigger SCA delivery and provide information about cancellation:
+
+        - Validates the cancellation request and authorization
+        - Checks if the payment exists and is in a cancellable state
+        - Determines if Strong Customer Authentication (SCA) is required for cancellation
+        - Delivers SCA code if required (via SMS or other configured channel)
+        - Returns information about cancellation feasibility, fees, and SCA requirements
+
+        **Important:** The simulation reference returned must be included in the actual cancellation
+        request to link the SCA verification. This endpoint does not actually cancel the payment.
+      operationId: simulateCancellation_3
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AchCancellationRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: Simulation successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+        '404':
+          description: Payment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentSimulationResultDTO'
+  /api/v1/payments/ach/cancel:
+    post:
+      tags:
+        - ACH Payments
+      summary: Cancel an ACH payment
+      description: |
+        **Cancels an existing ACH payment with Strong Customer Authentication (SCA) support.**
+
+        This endpoint attempts to cancel a previously submitted payment:
+
+        - Validates the cancellation request and authorization
+        - Verifies the payment exists and is in a cancellable state
+        - Verifies SCA if required (using the code delivered during cancellation simulation)
+        - Attempts to cancel the payment with the ACH network
+        - Returns the cancellation status and any applicable fees
+
+        **Important Limitations:**
+        - ACH payments can only be cancelled if they haven't been settled yet
+        - Once a payment has been processed by the ACH network, cancellation may not be possible
+        - A simulation reference from the `/cancel/simulate` endpoint must be included for SCA verification
+      operationId: cancelPayment_2
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AchCancellationRequestDTO'
+        required: true
+      responses:
+        '200':
+          description: Cancellation successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentCancellationResultDTO'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentCancellationResultDTO'
+        '404':
+          description: Payment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentCancellationResultDTO'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentCancellationResultDTO'
+components:
+  schemas:
+    AccountInfoDTO:
+      type: object
+      properties:
+        accountId:
+          type: integer
+          description: Account ID in the system
+          format: int64
+          example: 12345
+        accountSpaceId:
+          type: integer
+          description: Account space ID in the system
+          format: int64
+          example: 67890
+        accountNumber:
+          type: string
+          description: Account number
+          example: '1234567890'
+        iban:
+          pattern: ^[A-Z]{2}[0-9]{2}[A-Z0-9]{1,30}$
+          type: string
+          description: International Bank Account Number
+          example: DE89370400440532013000
+        abaRoutingNumber:
+          pattern: ^\d{9}$
+          type: string
+          description: ABA Routing Number for US bank accounts
+          example: '021000021'
+        bic:
+          maxLength: 11
+          minLength: 8
+          pattern: ^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$
+          type: string
+          description: Bank Identifier Code (SWIFT code)
+          example: DEUTDEFF
+        currency:
+          type: string
+          description: Account currency (ISO 4217 code)
+          example: EUR
+        accountType:
+          type: string
+          description: Account type
+          example: CHECKING
+        bankName:
+          type: string
+          description: Bank name
+          example: Deutsche Bank
+        bankCountryCode:
+          type: string
+          description: Bank country code (ISO 3166-1 alpha-2)
+          example: DE
+        bankAddress:
+          type: string
+          description: Bank address
+          example: Taunusanlage 12, 60325 Frankfurt am Main, Germany
+        internalAccount:
+          type: boolean
+          description: Flag indicating if this is an internal account within our core banking system
+      description: Account information for payment participants
+    PartyInfoDTO:
+      required:
+        - name
+      type: object
+      properties:
+        partyId:
+          type: integer
+          description: Party ID in the system
+          format: int64
+          example: 12345
+        name:
+          maxLength: 140
+          minLength: 0
+          type: string
+          description: Party name
+          example: John Doe
+        addressLine1:
+          type: string
+          description: Party address - street and number
+          example: 123 Main St
+        addressLine2:
+          type: string
+          description: Party address - additional information
+          example: Apt 4B
+        city:
+          type: string
+          description: Party address - city
+          example: New York
+        postalCode:
+          type: string
+          description: Party address - postal code
+          example: '10001'
+        countryCode:
+          type: string
+          description: Party address - country code (ISO 3166-1 alpha-2)
+          example: US
+        identificationType:
+          type: string
+          description: Party identification type (e.g., PASSPORT, TAX_ID)
+          example: TAX_ID
+        identificationValue:
+          type: string
+          description: Party identification value
+          example: 123-45-6789
+        phoneNumber:
+          type: string
+          description: Party contact phone number
+          example: +1-212-555-1234
+        emailAddress:
+          type: string
+          description: Party email address
+          example: john.doe@example.com
+        address:
+          type: string
+          description: Full address (deprecated, use addressLine1, addressLine2, city, postalCode instead)
+          example: 123 Main St, New York, NY 10001
+      description: Party information for payment participants (debtor/creditor)
+    ScaDTO:
+      type: object
+      properties:
+        method:
+          type: string
+          description: SCA method (SMS, EMAIL, APP, BIOMETRIC_FINGERPRINT, BIOMETRIC_FACE, BIOMETRIC_VOICE)
+          example: SMS
+        recipient:
+          type: string
+          description: Recipient identifier (phone number, email, device ID)
+          example: '+34600000000'
+        authenticationCode:
+          type: string
+          description: Authentication code provided by the user or biometric verification token
+          example: '123456'
+        challengeId:
+          type: string
+          description: Challenge ID for the SCA process
+          example: CHL-123456789
+        required:
+          type: boolean
+          description: Flag indicating if SCA is required for this operation
+        completed:
+          type: boolean
+          description: Flag indicating if SCA has been completed
+        challengeTimestamp:
+          type: string
+          description: Timestamp when the SCA challenge was created
+        expiryTimestamp:
+          type: string
+          description: Timestamp when the SCA challenge expires
+        biometricData:
+          type: string
+          description: Additional data for biometric authentication
+        deviceId:
+          type: string
+          description: Device ID for biometric authentication
+          example: device-123456
+      description: Strong Customer Authentication information
+    UkFasterPaymentRequestDTO:
+      required:
+        - amount
+        - creditor
+        - creditorAccount
+        - currency
+        - debtor
+        - debtorAccount
+        - paymentType
+        - remittanceInformation
+      type: object
+      properties:
+        requestId:
+          type: string
+          description: Unique identifier for the payment request
+          example: PAY-123456789
+        paymentType:
+          type: string
+          description: Type of payment
+          enum:
+            - SEPA_SCT
+            - SEPA_ICT
+            - SEPA_SDD
+            - SEPA_SDD_CORE
+            - SEPA_SDD_B2B
+            - SEPA_SCT_INST
+            - SEPA_SDD_RECURRENT
+            - SEPA_SDD_ONE_OFF
+            - SEPA_SCT_FUTURE_DATED
+            - SEPA_SCT_STANDING_ORDER
+            - SWIFT_MT103
+            - SWIFT_MT202
+            - SWIFT_PACS_008
+            - ACH_CREDIT
+            - ACH_DEBIT
+            - WIRE_TRANSFER
+            - UK_FPS
+            - UK_BACS
+            - UK_BACS_DIRECT_DEBIT
+            - UK_CHAPS
+            - UK_STANDING_ORDER
+            - TARGET2
+            - TIPS
+            - EBA_STEP2
+            - INTERNAL_TRANSFER
+            - INTERNAL_BULK_TRANSFER
+        amount:
+          type: number
+          description: Payment amount
+          example: 100.5
+        currency:
+          type: string
+          description: Payment currency (ISO 4217 code)
+          example: EUR
+        requestedExecutionDate:
+          type: string
+          description: Requested execution date
+          format: date
+          example: '2023-12-31'
+        endToEndId:
+          type: string
+          description: End-to-end identification
+          example: E2E-12345
+        reference:
+          type: string
+          description: Payment reference/description
+          example: 'Invoice payment #12345'
+        preferredProvider:
+          type: string
+          description: Preferred payment provider
+          example: TREEZOR
+          enum:
+            - SEPA_PROVIDER
+            - SWIFT_PROVIDER
+            - ACH_PROVIDER
+            - UK_PROVIDER
+            - TARGET2_PROVIDER
+            - TIPS_PROVIDER
+            - EBA_STEP2_PROVIDER
+            - INTERNAL_PROVIDER
+            - CARD_PROVIDER
+            - DEFAULT_PROVIDER
+        sca:
+          $ref: '#/components/schemas/ScaDTO'
+        simulationReference:
+          type: string
+          description: Reference to a previous simulation, used to link execute/schedule/cancel operations with a simulation
+          example: SIM-12345678
+        debtor:
+          $ref: '#/components/schemas/PartyInfoDTO'
+        debtorAccount:
+          $ref: '#/components/schemas/AccountInfoDTO'
+        creditor:
+          $ref: '#/components/schemas/PartyInfoDTO'
+        creditorAccount:
+          $ref: '#/components/schemas/AccountInfoDTO'
+        remittanceInformation:
+          maxLength: 140
+          minLength: 0
+          type: string
+          description: Remittance information / payment details
+          example: Invoice 12345
+        serviceUserNumber:
+          type: string
+          description: Service user number (SUN)
+          example: '123456'
+        paymentScheme:
+          type: string
+          description: Payment scheme (FPS, SIP)
+          example: FPS
+        regulatoryReporting:
+          type: string
+          description: Regulatory reporting information
+        chargeBearer:
+          type: string
+          description: Charge bearer (DEBT, CRED, SHAR)
+          example: SHAR
+        instructionPriority:
+          type: string
+          description: Instruction priority (NORM, HIGH, URGT)
+          example: NORM
+        notificationUrl:
+          type: string
+          description: Notification URL for payment status updates
+          example: https://example.com/payment-notifications
+      description: UK Faster Payments Service (FPS) payment request
+    PaymentSimulationResultDTO:
+      required:
+        - operationType
+        - paymentType
+        - provider
+        - status
+        - success
+        - timestamp
+      type: object
+      properties:
+        paymentId:
+          type: string
+          description: Unique identifier for the payment
+          example: PAY-123456789
+        requestId:
+          type: string
+          description: Original request ID
+          example: REQ-123456789
+        paymentType:
+          type: string
+          description: Type of payment
+          enum:
+            - SEPA_SCT
+            - SEPA_ICT
+            - SEPA_SDD
+            - SEPA_SDD_CORE
+            - SEPA_SDD_B2B
+            - SEPA_SCT_INST
+            - SEPA_SDD_RECURRENT
+            - SEPA_SDD_ONE_OFF
+            - SEPA_SCT_FUTURE_DATED
+            - SEPA_SCT_STANDING_ORDER
+            - SWIFT_MT103
+            - SWIFT_MT202
+            - SWIFT_PACS_008
+            - ACH_CREDIT
+            - ACH_DEBIT
+            - WIRE_TRANSFER
+            - UK_FPS
+            - UK_BACS
+            - UK_BACS_DIRECT_DEBIT
+            - UK_CHAPS
+            - UK_STANDING_ORDER
+            - TARGET2
+            - TIPS
+            - EBA_STEP2
+            - INTERNAL_TRANSFER
+            - INTERNAL_BULK_TRANSFER
+        operationType:
+          type: string
+          description: Type of operation performed
+          enum:
+            - SIMULATE
+            - EXECUTE
+            - CANCEL
+            - SCHEDULE
+            - SIMULATE_CANCELLATION
+        status:
+          type: string
+          description: Current status of the payment
+          enum:
+            - CREATED
+            - VALIDATED
+            - PENDING
+            - SCHEDULED
+            - COMPLETED
+            - REJECTED
+            - FAILED
+            - CANCELLED
+            - PENDING_APPROVAL
+            - RETURNED
+            - RECALLED
+        provider:
+          type: string
+          description: Provider that processed the payment
+          enum:
+            - SEPA_PROVIDER
+            - SWIFT_PROVIDER
+            - ACH_PROVIDER
+            - UK_PROVIDER
+            - TARGET2_PROVIDER
+            - TIPS_PROVIDER
+            - EBA_STEP2_PROVIDER
+            - INTERNAL_PROVIDER
+            - CARD_PROVIDER
+            - DEFAULT_PROVIDER
+        timestamp:
+          type: string
+          description: Timestamp when the operation was processed
+          format: date-time
+        success:
+          type: boolean
+          description: Success flag indicating if the operation was successful
+        errorCode:
+          type: string
+          description: Error code in case of failure
+        errorMessage:
+          type: string
+          description: Error message in case of failure
+        providerReference:
+          type: string
+          description: Provider-specific reference ID
+        scaRequired:
+          type: boolean
+          description: Flag indicating if SCA (Strong Customer Authentication) is required
+        scaCompleted:
+          type: boolean
+          description: Flag indicating if SCA has been completed successfully
+        scaResult:
+          $ref: '#/components/schemas/ScaResultDTO'
+        estimatedExecutionDate:
+          type: string
+          description: Estimated execution date if the payment were to be executed
+          format: date
+          example: '2023-12-31'
+        estimatedSettlementDate:
+          type: string
+          description: Estimated settlement date when funds would be available to the beneficiary
+          format: date
+          example: '2024-01-02'
+        estimatedFee:
+          type: number
+          description: Estimated fee for executing the payment
+          example: 2.5
+        feeCurrency:
+          type: string
+          description: Currency of the estimated fee (ISO 4217 code)
+          example: EUR
+        estimatedExchangeRate:
+          type: number
+          description: Estimated exchange rate if currency conversion is involved
+          example: 1.105
+        feasible:
+          type: boolean
+          description: Flag indicating if the payment would be likely to succeed if executed
+        warnings:
+          type: array
+          description: Validation issues or warnings that would not prevent execution but should be noted
+          items:
+            type: string
+            description: Validation issues or warnings that would not prevent execution but should be noted
+        scaDeliveryTriggered:
+          type: boolean
+          description: Flag indicating if SCA delivery was triggered during simulation
+        scaDeliveryTimestamp:
+          type: string
+          description: Timestamp when the SCA was delivered
+          format: date-time
+        scaDeliveryMethod:
+          type: string
+          description: Method used for SCA delivery (SMS, EMAIL, APP, etc.)
+        scaDeliveryRecipient:
+          type: string
+          description: Recipient of the SCA delivery (masked phone number, email, etc.)
+        scaExpiryTimestamp:
+          type: string
+          description: Expiry timestamp for the delivered SCA code
+          format: date-time
+        simulationReference:
+          type: string
+          description: Unique reference ID for this simulation that should be used in subsequent operations
+      description: Result of a payment simulation operation
+    ScaResultDTO:
+      required:
+        - success
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: Flag indicating if SCA verification was successful
+        method:
+          type: string
+          description: SCA method used (SMS, EMAIL, APP, BIOMETRIC)
+          example: SMS
+        challengeId:
+          type: string
+          description: Challenge ID for the SCA process
+          example: CHL-123456789
+        verificationTimestamp:
+          type: string
+          description: Timestamp when the SCA verification was completed
+          format: date-time
+        errorCode:
+          type: string
+          description: Error code in case of verification failure
+        errorMessage:
+          type: string
+          description: Error message in case of verification failure
+        attemptCount:
+          type: integer
+          description: Number of attempts made for this verification
+          format: int32
+        maxAttempts:
+          type: integer
+          description: Maximum number of attempts allowed
+          format: int32
+        expired:
+          type: boolean
+          description: Flag indicating if the verification has expired
+        expiryTimestamp:
+          type: string
+          description: Timestamp when the verification expires
+          format: date-time
+        message:
+          type: string
+          description: Authentication message
+        authenticationMethod:
+          type: string
+          description: Authentication method used
+        authenticationTimestamp:
+          type: string
+          description: Timestamp when the authentication was completed
+          format: date-time
+      description: Strong Customer Authentication verification result
+    PaymentScheduleResultDTO:
+      required:
+        - operationType
+        - paymentType
+        - provider
+        - status
+        - success
+        - timestamp
+      type: object
+      properties:
+        paymentId:
+          type: string
+          description: Unique identifier for the payment
+          example: PAY-123456789
+        requestId:
+          type: string
+          description: Original request ID
+          example: REQ-123456789
+        paymentType:
+          type: string
+          description: Type of payment
+          enum:
+            - SEPA_SCT
+            - SEPA_ICT
+            - SEPA_SDD
+            - SEPA_SDD_CORE
+            - SEPA_SDD_B2B
+            - SEPA_SCT_INST
+            - SEPA_SDD_RECURRENT
+            - SEPA_SDD_ONE_OFF
+            - SEPA_SCT_FUTURE_DATED
+            - SEPA_SCT_STANDING_ORDER
+            - SWIFT_MT103
+            - SWIFT_MT202
+            - SWIFT_PACS_008
+            - ACH_CREDIT
+            - ACH_DEBIT
+            - WIRE_TRANSFER
+            - UK_FPS
+            - UK_BACS
+            - UK_BACS_DIRECT_DEBIT
+            - UK_CHAPS
+            - UK_STANDING_ORDER
+            - TARGET2
+            - TIPS
+            - EBA_STEP2
+            - INTERNAL_TRANSFER
+            - INTERNAL_BULK_TRANSFER
+        operationType:
+          type: string
+          description: Type of operation performed
+          enum:
+            - SIMULATE
+            - EXECUTE
+            - CANCEL
+            - SCHEDULE
+            - SIMULATE_CANCELLATION
+        status:
+          type: string
+          description: Current status of the payment
+          enum:
+            - CREATED
+            - VALIDATED
+            - PENDING
+            - SCHEDULED
+            - COMPLETED
+            - REJECTED
+            - FAILED
+            - CANCELLED
+            - PENDING_APPROVAL
+            - RETURNED
+            - RECALLED
+        provider:
+          type: string
+          description: Provider that processed the payment
+          enum:
+            - SEPA_PROVIDER
+            - SWIFT_PROVIDER
+            - ACH_PROVIDER
+            - UK_PROVIDER
+            - TARGET2_PROVIDER
+            - TIPS_PROVIDER
+            - EBA_STEP2_PROVIDER
+            - INTERNAL_PROVIDER
+            - CARD_PROVIDER
+            - DEFAULT_PROVIDER
+        timestamp:
+          type: string
+          description: Timestamp when the operation was processed
+          format: date-time
+        success:
+          type: boolean
+          description: Success flag indicating if the operation was successful
+        errorCode:
+          type: string
+          description: Error code in case of failure
+        errorMessage:
+          type: string
+          description: Error message in case of failure
+        providerReference:
+          type: string
+          description: Provider-specific reference ID
+        scaRequired:
+          type: boolean
+          description: Flag indicating if SCA (Strong Customer Authentication) is required
+        scaCompleted:
+          type: boolean
+          description: Flag indicating if SCA has been completed successfully
+        scaResult:
+          $ref: '#/components/schemas/ScaResultDTO'
+        scheduledDate:
+          type: string
+          description: Scheduled execution date of the payment
+          format: date
+          example: '2023-12-31'
+        scheduleReference:
+          type: string
+          description: Reference ID for the scheduled payment
+          example: SCH-123456789
+        scheduledTimestamp:
+          type: string
+          description: Timestamp when the scheduling was processed
+          format: date-time
+        modifiable:
+          type: boolean
+          description: Flag indicating if the scheduled payment can be modified
+        cancellable:
+          type: boolean
+          description: Flag indicating if the scheduled payment can be cancelled
+        recurrencePattern:
+          type: string
+          description: Recurrence pattern for recurring payments (null for one-time payments)
+        recurrenceEndDate:
+          type: string
+          description: End date for recurring payments (null for one-time or open-ended recurring payments)
+          format: date
+        additionalInformation:
+          type: string
+          description: Additional information about the scheduling process
+        scheduledExecutionDate:
+          type: string
+          description: Scheduled execution date of the payment
+          format: date
+        expectedSettlementDate:
+          type: string
+          description: Expected settlement date of the payment
+          format: date
+        transactionReference:
+          type: string
+          description: Transaction reference
+        requiresAuthorization:
+          type: boolean
+          description: Flag indicating if the payment requires authorization
+      description: Result of a payment scheduling operation
+    PaymentExecutionResultDTO:
+      required:
+        - operationType
+        - paymentType
+        - provider
+        - status
+        - success
+        - timestamp
+      type: object
+      properties:
+        paymentId:
+          type: string
+          description: Unique identifier for the payment
+          example: PAY-123456789
+        requestId:
+          type: string
+          description: Original request ID
+          example: REQ-123456789
+        paymentType:
+          type: string
+          description: Type of payment
+          enum:
+            - SEPA_SCT
+            - SEPA_ICT
+            - SEPA_SDD
+            - SEPA_SDD_CORE
+            - SEPA_SDD_B2B
+            - SEPA_SCT_INST
+            - SEPA_SDD_RECURRENT
+            - SEPA_SDD_ONE_OFF
+            - SEPA_SCT_FUTURE_DATED
+            - SEPA_SCT_STANDING_ORDER
+            - SWIFT_MT103
+            - SWIFT_MT202
+            - SWIFT_PACS_008
+            - ACH_CREDIT
+            - ACH_DEBIT
+            - WIRE_TRANSFER
+            - UK_FPS
+            - UK_BACS
+            - UK_BACS_DIRECT_DEBIT
+            - UK_CHAPS
+            - UK_STANDING_ORDER
+            - TARGET2
+            - TIPS
+            - EBA_STEP2
+            - INTERNAL_TRANSFER
+            - INTERNAL_BULK_TRANSFER
+        operationType:
+          type: string
+          description: Type of operation performed
+          enum:
+            - SIMULATE
+            - EXECUTE
+            - CANCEL
+            - SCHEDULE
+            - SIMULATE_CANCELLATION
+        status:
+          type: string
+          description: Current status of the payment
+          enum:
+            - CREATED
+            - VALIDATED
+            - PENDING
+            - SCHEDULED
+            - COMPLETED
+            - REJECTED
+            - FAILED
+            - CANCELLED
+            - PENDING_APPROVAL
+            - RETURNED
+            - RECALLED
+        provider:
+          type: string
+          description: Provider that processed the payment
+          enum:
+            - SEPA_PROVIDER
+            - SWIFT_PROVIDER
+            - ACH_PROVIDER
+            - UK_PROVIDER
+            - TARGET2_PROVIDER
+            - TIPS_PROVIDER
+            - EBA_STEP2_PROVIDER
+            - INTERNAL_PROVIDER
+            - CARD_PROVIDER
+            - DEFAULT_PROVIDER
+        timestamp:
+          type: string
+          description: Timestamp when the operation was processed
+          format: date-time
+        success:
+          type: boolean
+          description: Success flag indicating if the operation was successful
+        errorCode:
+          type: string
+          description: Error code in case of failure
+        errorMessage:
+          type: string
+          description: Error message in case of failure
+        providerReference:
+          type: string
+          description: Provider-specific reference
+        scaRequired:
+          type: boolean
+          description: Flag indicating if SCA (Strong Customer Authentication) is required
+        scaCompleted:
+          type: boolean
+          description: Flag indicating if SCA has been completed successfully
+        scaResult:
+          $ref: '#/components/schemas/ScaResultDTO'
+        executionDate:
+          type: string
+          description: Actual execution date of the payment
+          format: date
+          example: '2023-12-31'
+        expectedSettlementDate:
+          type: string
+          description: Expected settlement date when funds will be available to the beneficiary
+          format: date
+          example: '2024-01-02'
+        transactionReference:
+          type: string
+          description: Transaction reference number assigned by the payment system
+          example: TRN-123456789
+        clearingSystemReference:
+          type: string
+          description: Clearing system reference number
+          example: CSR-123456789
+        receivedTimestamp:
+          type: string
+          description: Timestamp when the payment was received by the payment system
+          format: date-time
+        requiresAuthorization:
+          type: boolean
+          description: Flag indicating if the payment requires additional authorization
+        authorizationReference:
+          type: string
+          description: URL or reference for authorization if required
+      description: Result of a payment execution operation
+    UkCancellationRequestDTO:
+      required:
+        - paymentId
+        - paymentType
+      type: object
+      properties:
+        paymentId:
+          type: string
+          description: ID of the payment to cancel
+          example: PAY-12345678
+        paymentType:
+          type: string
+          description: Type of payment
+          example: UK_FPS
+          enum:
+            - SEPA_SCT
+            - SEPA_ICT
+            - SEPA_SDD
+            - SEPA_SDD_CORE
+            - SEPA_SDD_B2B
+            - SEPA_SCT_INST
+            - SEPA_SDD_RECURRENT
+            - SEPA_SDD_ONE_OFF
+            - SEPA_SCT_FUTURE_DATED
+            - SEPA_SCT_STANDING_ORDER
+            - SWIFT_MT103
+            - SWIFT_MT202
+            - SWIFT_PACS_008
+            - ACH_CREDIT
+            - ACH_DEBIT
+            - WIRE_TRANSFER
+            - UK_FPS
+            - UK_BACS
+            - UK_BACS_DIRECT_DEBIT
+            - UK_CHAPS
+            - UK_STANDING_ORDER
+            - TARGET2
+            - TIPS
+            - EBA_STEP2
+            - INTERNAL_TRANSFER
+            - INTERNAL_BULK_TRANSFER
+        endToEndId:
+          type: string
+          description: Original end-to-end ID of the payment
+          example: E2E-12345678
+        cancellationReason:
+          type: string
+          description: Reason for cancellation
+          example: Customer request
+        additionalInformation:
+          type: string
+          description: Additional information about the cancellation
+          example: Payment no longer needed
+        preferredProvider:
+          type: string
+          description: Preferred payment provider
+          example: UK_PROVIDER
+          enum:
+            - SEPA_PROVIDER
+            - SWIFT_PROVIDER
+            - ACH_PROVIDER
+            - UK_PROVIDER
+            - TARGET2_PROVIDER
+            - TIPS_PROVIDER
+            - EBA_STEP2_PROVIDER
+            - INTERNAL_PROVIDER
+            - CARD_PROVIDER
+            - DEFAULT_PROVIDER
+        originalTransactionReference:
+          type: string
+          description: Original transaction reference
+          example: TRN-12345678
+        acceptPartialCancellation:
+          type: boolean
+          description: Flag indicating if a partial cancellation is acceptable
+        sca:
+          $ref: '#/components/schemas/ScaDTO'
+        simulationReference:
+          type: string
+          description: Reference to a previous simulation, used to link the cancellation with a simulation
+          example: SIM-12345678
+      description: Request for cancelling a UK payment (Faster Payments, BACS, or CHAPS)
+    PaymentCancellationResultDTO:
+      required:
+        - operationType
+        - paymentType
+        - provider
+        - status
+        - success
+        - timestamp
+      type: object
+      properties:
+        paymentId:
+          type: string
+          description: Unique identifier for the payment
+          example: PAY-123456789
+        requestId:
+          type: string
+          description: Original request ID
+          example: REQ-123456789
+        paymentType:
+          type: string
+          description: Type of payment
+          enum:
+            - SEPA_SCT
+            - SEPA_ICT
+            - SEPA_SDD
+            - SEPA_SDD_CORE
+            - SEPA_SDD_B2B
+            - SEPA_SCT_INST
+            - SEPA_SDD_RECURRENT
+            - SEPA_SDD_ONE_OFF
+            - SEPA_SCT_FUTURE_DATED
+            - SEPA_SCT_STANDING_ORDER
+            - SWIFT_MT103
+            - SWIFT_MT202
+            - SWIFT_PACS_008
+            - ACH_CREDIT
+            - ACH_DEBIT
+            - WIRE_TRANSFER
+            - UK_FPS
+            - UK_BACS
+            - UK_BACS_DIRECT_DEBIT
+            - UK_CHAPS
+            - UK_STANDING_ORDER
+            - TARGET2
+            - TIPS
+            - EBA_STEP2
+            - INTERNAL_TRANSFER
+            - INTERNAL_BULK_TRANSFER
+        operationType:
+          type: string
+          description: Type of operation performed
+          enum:
+            - SIMULATE
+            - EXECUTE
+            - CANCEL
+            - SCHEDULE
+            - SIMULATE_CANCELLATION
+        status:
+          type: string
+          description: Current status of the payment
+          enum:
+            - CREATED
+            - VALIDATED
+            - PENDING
+            - SCHEDULED
+            - COMPLETED
+            - REJECTED
+            - FAILED
+            - CANCELLED
+            - PENDING_APPROVAL
+            - RETURNED
+            - RECALLED
+        provider:
+          type: string
+          description: Provider that processed the payment
+          enum:
+            - SEPA_PROVIDER
+            - SWIFT_PROVIDER
+            - ACH_PROVIDER
+            - UK_PROVIDER
+            - TARGET2_PROVIDER
+            - TIPS_PROVIDER
+            - EBA_STEP2_PROVIDER
+            - INTERNAL_PROVIDER
+            - CARD_PROVIDER
+            - DEFAULT_PROVIDER
+        timestamp:
+          type: string
+          description: Timestamp when the operation was processed
+          format: date-time
+        success:
+          type: boolean
+          description: Success flag indicating if the operation was successful
+        errorCode:
+          type: string
+          description: Error code in case of failure
+        errorMessage:
+          type: string
+          description: Error message in case of failure
+        providerReference:
+          type: string
+          description: Provider-specific reference ID
+        scaRequired:
+          type: boolean
+          description: Flag indicating if SCA (Strong Customer Authentication) is required
+        scaCompleted:
+          type: boolean
+          description: Flag indicating if SCA has been completed successfully
+        scaResult:
+          $ref: '#/components/schemas/ScaResultDTO'
+        cancellationReason:
+          type: string
+          description: Reason for cancellation
+          example: Customer request
+        cancellationReference:
+          type: string
+          description: Reference ID for the cancellation request
+          example: CAN-123456789
+        cancellationTimestamp:
+          type: string
+          description: Timestamp when the cancellation was processed
+          format: date-time
+        feesCharged:
+          type: boolean
+          description: Flag indicating if any fees were charged for the cancellation
+        fullyCancelled:
+          type: boolean
+          description: Flag indicating if the original payment was fully cancelled
+        fundsReturned:
+          type: boolean
+          description: Flag indicating if the funds have been returned
+        additionalInformation:
+          type: string
+          description: Additional information about the cancellation process
+        cancellationDate:
+          type: string
+          description: Date when the cancellation was processed
+          format: date
+      description: Result of a payment cancellation operation
+    UkChapsPaymentRequestDTO:
+      required:
+        - amount
+        - creditor
+        - creditorAccount
+        - currency
+        - debtor
+        - debtorAccount
+        - paymentType
+        - remittanceInformation
+      type: object
+      properties:
+        requestId:
+          type: string
+          description: Unique identifier for the payment request
+          example: PAY-123456789
+        paymentType:
+          type: string
+          description: Type of payment
+          enum:
+            - SEPA_SCT
+            - SEPA_ICT
+            - SEPA_SDD
+            - SEPA_SDD_CORE
+            - SEPA_SDD_B2B
+            - SEPA_SCT_INST
+            - SEPA_SDD_RECURRENT
+            - SEPA_SDD_ONE_OFF
+            - SEPA_SCT_FUTURE_DATED
+            - SEPA_SCT_STANDING_ORDER
+            - SWIFT_MT103
+            - SWIFT_MT202
+            - SWIFT_PACS_008
+            - ACH_CREDIT
+            - ACH_DEBIT
+            - WIRE_TRANSFER
+            - UK_FPS
+            - UK_BACS
+            - UK_BACS_DIRECT_DEBIT
+            - UK_CHAPS
+            - UK_STANDING_ORDER
+            - TARGET2
+            - TIPS
+            - EBA_STEP2
+            - INTERNAL_TRANSFER
+            - INTERNAL_BULK_TRANSFER
+        amount:
+          type: number
+          description: Payment amount
+          example: 100.5
+        currency:
+          type: string
+          description: Payment currency (ISO 4217 code)
+          example: EUR
+        requestedExecutionDate:
+          type: string
+          description: Requested execution date
+          format: date
+          example: '2023-12-31'
+        endToEndId:
+          type: string
+          description: End-to-end identification
+          example: E2E-12345
+        reference:
+          type: string
+          description: Payment reference/description
+          example: 'Invoice payment #12345'
+        preferredProvider:
+          type: string
+          description: Preferred payment provider
+          example: TREEZOR
+          enum:
+            - SEPA_PROVIDER
+            - SWIFT_PROVIDER
+            - ACH_PROVIDER
+            - UK_PROVIDER
+            - TARGET2_PROVIDER
+            - TIPS_PROVIDER
+            - EBA_STEP2_PROVIDER
+            - INTERNAL_PROVIDER
+            - CARD_PROVIDER
+            - DEFAULT_PROVIDER
+        sca:
+          $ref: '#/components/schemas/ScaDTO'
+        simulationReference:
+          type: string
+          description: Reference to a previous simulation, used to link execute/schedule/cancel operations with a simulation
+          example: SIM-12345678
+        debtor:
+          $ref: '#/components/schemas/PartyInfoDTO'
+        debtorAccount:
+          $ref: '#/components/schemas/AccountInfoDTO'
+        creditor:
+          $ref: '#/components/schemas/PartyInfoDTO'
+        creditorAccount:
+          $ref: '#/components/schemas/AccountInfoDTO'
+        remittanceInformation:
+          maxLength: 140
+          minLength: 0
+          type: string
+          description: Remittance information / payment details
+          example: Invoice 12345
+        regulatoryReporting:
+          type: string
+          description: Regulatory reporting information
+        chargeBearer:
+          type: string
+          description: Charge bearer (DEBT, CRED, SHAR)
+          example: SHAR
+        instructionPriority:
+          type: string
+          description: Instruction priority (NORM, HIGH, URGT)
+          example: URGT
+        settlementPriority:
+          type: string
+          description: Settlement priority (NORM, HIGH, URGT)
+          example: HIGH
+        settlementTimeIndication:
+          type: string
+          description: Settlement time indication (CLSTIME, TILTIME, REJTIME)
+          example: TILTIME
+        settlementTime:
+          type: string
+          description: Settlement time (HH:MM:SS+/-ZZ:ZZ)
+          example: 14:00:00+01:00
+        notificationUrl:
+          type: string
+          description: Notification URL for payment status updates
+          example: https://example.com/payment-notifications
+      description: UK CHAPS payment request
+    UkBacsPaymentRequestDTO:
+      required:
+        - amount
+        - creditor
+        - creditorAccount
+        - currency
+        - debtor
+        - debtorAccount
+        - paymentType
+        - remittanceInformation
+      type: object
+      properties:
+        requestId:
+          type: string
+          description: Unique identifier for the payment request
+          example: PAY-123456789
+        paymentType:
+          type: string
+          description: Type of payment
+          enum:
+            - SEPA_SCT
+            - SEPA_ICT
+            - SEPA_SDD
+            - SEPA_SDD_CORE
+            - SEPA_SDD_B2B
+            - SEPA_SCT_INST
+            - SEPA_SDD_RECURRENT
+            - SEPA_SDD_ONE_OFF
+            - SEPA_SCT_FUTURE_DATED
+            - SEPA_SCT_STANDING_ORDER
+            - SWIFT_MT103
+            - SWIFT_MT202
+            - SWIFT_PACS_008
+            - ACH_CREDIT
+            - ACH_DEBIT
+            - WIRE_TRANSFER
+            - UK_FPS
+            - UK_BACS
+            - UK_BACS_DIRECT_DEBIT
+            - UK_CHAPS
+            - UK_STANDING_ORDER
+            - TARGET2
+            - TIPS
+            - EBA_STEP2
+            - INTERNAL_TRANSFER
+            - INTERNAL_BULK_TRANSFER
+        amount:
+          type: number
+          description: Payment amount
+          example: 100.5
+        currency:
+          type: string
+          description: Payment currency (ISO 4217 code)
+          example: EUR
+        requestedExecutionDate:
+          type: string
+          description: Requested execution date
+          format: date
+          example: '2023-12-31'
+        endToEndId:
+          type: string
+          description: End-to-end identifier for payment tracking
+          example: E2E-REF-12345
+        reference:
+          type: string
+          description: Payment reference/description
+          example: 'Invoice payment #12345'
+        preferredProvider:
+          type: string
+          description: Preferred payment provider
+          example: TREEZOR
+          enum:
+            - SEPA_PROVIDER
+            - SWIFT_PROVIDER
+            - ACH_PROVIDER
+            - UK_PROVIDER
+            - TARGET2_PROVIDER
+            - TIPS_PROVIDER
+            - EBA_STEP2_PROVIDER
+            - INTERNAL_PROVIDER
+            - CARD_PROVIDER
+            - DEFAULT_PROVIDER
+        sca:
+          $ref: '#/components/schemas/ScaDTO'
+        simulationReference:
+          type: string
+          description: Reference to a previous simulation, used to link execute/schedule/cancel operations with a simulation
+          example: SIM-12345678
+        debtor:
+          $ref: '#/components/schemas/PartyInfoDTO'
+        debtorAccount:
+          $ref: '#/components/schemas/AccountInfoDTO'
+        creditor:
+          $ref: '#/components/schemas/PartyInfoDTO'
+        creditorAccount:
+          $ref: '#/components/schemas/AccountInfoDTO'
+        remittanceInformation:
+          maxLength: 18
+          minLength: 0
+          type: string
+          description: Remittance information / payment details
+          example: INV12345
+        serviceUserNumber:
+          type: string
+          description: Service user number (SUN)
+          example: '123456'
+        processingDate:
+          type: string
+          description: Processing date (YYYY-MM-DD)
+          example: '2023-10-15'
+        transactionCode:
+          type: string
+          description: BACS transaction code
+          example: '99'
+        bacsPaymentType:
+          type: string
+          description: BACS payment type (CREDIT, DIRECT_DEBIT)
+          example: CREDIT
+        debitReference:
+          type: string
+          description: Reference for the debit leg
+          example: DEBIT-REF-12345
+        creditReference:
+          type: string
+          description: Reference for the credit leg
+          example: CREDIT-REF-12345
+        contraPayment:
+          type: boolean
+          description: Indicates if this is a contra payment
+          example: false
+      description: UK BACS payment request
+    SwiftPaymentRequestDTO:
+      required:
+        - amount
+        - beneficiaryCustomer
+        - beneficiaryInstitution
+        - currency
+        - orderingCustomer
+        - orderingInstitution
+        - paymentDetails
+        - paymentType
+      type: object
+      properties:
+        requestId:
+          type: string
+          description: Unique identifier for the payment request
+          example: PAY-123456789
+        paymentType:
+          type: string
+          description: Type of payment
+          enum:
+            - SEPA_SCT
+            - SEPA_ICT
+            - SEPA_SDD
+            - SEPA_SDD_CORE
+            - SEPA_SDD_B2B
+            - SEPA_SCT_INST
+            - SEPA_SDD_RECURRENT
+            - SEPA_SDD_ONE_OFF
+            - SEPA_SCT_FUTURE_DATED
+            - SEPA_SCT_STANDING_ORDER
+            - SWIFT_MT103
+            - SWIFT_MT202
+            - SWIFT_PACS_008
+            - ACH_CREDIT
+            - ACH_DEBIT
+            - WIRE_TRANSFER
+            - UK_FPS
+            - UK_BACS
+            - UK_BACS_DIRECT_DEBIT
+            - UK_CHAPS
+            - UK_STANDING_ORDER
+            - TARGET2
+            - TIPS
+            - EBA_STEP2
+            - INTERNAL_TRANSFER
+            - INTERNAL_BULK_TRANSFER
+        amount:
+          type: number
+          description: Payment amount
+          example: 100.5
+        currency:
+          type: string
+          description: Payment currency (ISO 4217 code)
+          example: EUR
+        requestedExecutionDate:
+          type: string
+          description: Requested execution date
+          format: date
+          example: '2023-12-31'
+        endToEndId:
+          type: string
+          description: End-to-end identifier for payment tracking
+          example: E2E-REF-12345
+        reference:
+          type: string
+          description: Payment reference/description
+          example: 'Invoice payment #12345'
+        preferredProvider:
+          type: string
+          description: Preferred payment provider
+          example: TREEZOR
+          enum:
+            - SEPA_PROVIDER
+            - SWIFT_PROVIDER
+            - ACH_PROVIDER
+            - UK_PROVIDER
+            - TARGET2_PROVIDER
+            - TIPS_PROVIDER
+            - EBA_STEP2_PROVIDER
+            - INTERNAL_PROVIDER
+            - CARD_PROVIDER
+            - DEFAULT_PROVIDER
+        sca:
+          $ref: '#/components/schemas/ScaDTO'
+        simulationReference:
+          type: string
+          description: Reference to a previous simulation, used to link execute/schedule/cancel operations with a simulation
+          example: SIM-12345678
+        orderingCustomer:
+          $ref: '#/components/schemas/PartyInfoDTO'
+        orderingInstitution:
+          $ref: '#/components/schemas/AccountInfoDTO'
+        beneficiaryCustomer:
+          $ref: '#/components/schemas/PartyInfoDTO'
+        beneficiaryInstitution:
+          $ref: '#/components/schemas/AccountInfoDTO'
+        intermediaryInstitution:
+          $ref: '#/components/schemas/AccountInfoDTO'
+        paymentDetails:
+          maxLength: 140
+          minLength: 0
+          type: string
+          description: Payment details / remittance information
+          example: Invoice 12345
+        senderReference:
+          type: string
+          description: Sender's reference
+          example: SENDER-REF-12345
+        messageType:
+          type: string
+          description: Message type (e.g., MT103, MT202, PACS.008)
+          example: MT103
+        valueDate:
+          type: string
+          description: Value date (settlement date)
+          format: date
+          example: '2023-12-31'
+        chargeBearer:
+          type: string
+          description: Charge bearer (OUR, BEN, SHA)
+          example: SHA
+        regulatoryReporting:
+          type: string
+          description: Regulatory reporting information
+        instructionCode:
+          type: string
+          description: Instruction code
+          example: PHOB
+        purposeCode:
+          type: string
+          description: Purpose of payment code
+          example: CASH
+      description: SWIFT payment request
+    LocalTime:
+      type: object
+      properties:
+        hour:
+          type: integer
+          format: int32
+        minute:
+          type: integer
+          format: int32
+        second:
+          type: integer
+          format: int32
+        nano:
+          type: integer
+          format: int32
+      description: Time when the payment should be executed
+      example: '14:30:00'
+    SwiftScheduleRequestDTO:
+      required:
+        - executionDate
+        - paymentRequest
+      type: object
+      properties:
+        paymentRequest:
+          $ref: '#/components/schemas/SwiftPaymentRequestDTO'
+        executionDate:
+          type: string
+          description: Date when the payment should be executed
+          format: date
+          example: '2023-12-31'
+        executionTime:
+          $ref: '#/components/schemas/LocalTime'
+        recurrencePattern:
+          type: string
+          description: Recurrence pattern (CRON expression)
+          example: 0 0 1 1 * ?
+        recurrenceEndDate:
+          type: string
+          description: End date for recurring payments
+          format: date
+          example: '2024-12-31'
+        maxRecurrences:
+          type: integer
+          description: Maximum number of recurrences
+          format: int32
+          example: 12
+        description:
+          type: string
+          description: Description of the schedule
+          example: Monthly salary payment
+        preferredProvider:
+          type: string
+          description: Preferred payment provider
+          example: TREEZOR
+          enum:
+            - SEPA_PROVIDER
+            - SWIFT_PROVIDER
+            - ACH_PROVIDER
+            - UK_PROVIDER
+            - TARGET2_PROVIDER
+            - TIPS_PROVIDER
+            - EBA_STEP2_PROVIDER
+            - INTERNAL_PROVIDER
+            - CARD_PROVIDER
+            - DEFAULT_PROVIDER
+        modifiable:
+          type: boolean
+          description: Flag indicating if the schedule can be modified after creation
+        cancellable:
+          type: boolean
+          description: Flag indicating if the schedule can be cancelled after creation
+        timezone:
+          type: string
+          description: Timezone for execution time
+          example: Europe/Paris
+      description: SWIFT schedule request
+    SwiftCancellationRequestDTO:
+      required:
+        - paymentId
+        - paymentType
+      type: object
+      properties:
+        paymentId:
+          type: string
+          description: ID of the payment to cancel
+          example: PAY-123456789
+        paymentType:
+          type: string
+          description: Type of payment
+          enum:
+            - SEPA_SCT
+            - SEPA_ICT
+            - SEPA_SDD
+            - SEPA_SDD_CORE
+            - SEPA_SDD_B2B
+            - SEPA_SCT_INST
+            - SEPA_SDD_RECURRENT
+            - SEPA_SDD_ONE_OFF
+            - SEPA_SCT_FUTURE_DATED
+            - SEPA_SCT_STANDING_ORDER
+            - SWIFT_MT103
+            - SWIFT_MT202
+            - SWIFT_PACS_008
+            - ACH_CREDIT
+            - ACH_DEBIT
+            - WIRE_TRANSFER
+            - UK_FPS
+            - UK_BACS
+            - UK_BACS_DIRECT_DEBIT
+            - UK_CHAPS
+            - UK_STANDING_ORDER
+            - TARGET2
+            - TIPS
+            - EBA_STEP2
+            - INTERNAL_TRANSFER
+            - INTERNAL_BULK_TRANSFER
+        senderReference:
+          type: string
+          description: Original sender reference
+          example: SENDER-REF-12345
+        messageType:
+          type: string
+          description: Original message type (e.g., MT103, MT202, PACS.008)
+          example: MT103
+        cancellationReason:
+          type: string
+          description: Reason for cancellation
+          example: DUPL
+        additionalInformation:
+          type: string
+          description: Additional information about the cancellation
+          example: Duplicate payment
+        preferredProvider:
+          type: string
+          description: Preferred payment provider
+          example: TREEZOR
+          enum:
+            - SEPA_PROVIDER
+            - SWIFT_PROVIDER
+            - ACH_PROVIDER
+            - UK_PROVIDER
+            - TARGET2_PROVIDER
+            - TIPS_PROVIDER
+            - EBA_STEP2_PROVIDER
+            - INTERNAL_PROVIDER
+            - CARD_PROVIDER
+            - DEFAULT_PROVIDER
+        originalTransactionReference:
+          type: string
+          description: Original transaction reference
+          example: TRN-123456789
+        acceptPartialCancellation:
+          type: boolean
+          description: Flag indicating if a partial cancellation is acceptable
+        senderBic:
+          type: string
+          description: Sender BIC
+          example: DEUTDEFF
+        receiverBic:
+          type: string
+          description: Receiver BIC
+          example: CHASUS33
+        sca:
+          $ref: '#/components/schemas/ScaDTO'
+        simulationReference:
+          type: string
+          description: Reference to a previous simulation, used to link the cancellation with a simulation
+          example: SIM-12345678
+      description: SWIFT cancellation request
+    SepaPaymentRequestDTO:
+      required:
+        - amount
+        - creditor
+        - creditorAccount
+        - currency
+        - debtor
+        - debtorAccount
+        - paymentType
+        - remittanceInformation
+      type: object
+      properties:
+        requestId:
+          type: string
+          description: Unique identifier for the payment request
+          example: PAY-123456789
+        paymentType:
+          type: string
+          description: Type of payment
+          enum:
+            - SEPA_SCT
+            - SEPA_ICT
+            - SEPA_SDD
+            - SEPA_SDD_CORE
+            - SEPA_SDD_B2B
+            - SEPA_SCT_INST
+            - SEPA_SDD_RECURRENT
+            - SEPA_SDD_ONE_OFF
+            - SEPA_SCT_FUTURE_DATED
+            - SEPA_SCT_STANDING_ORDER
+            - SWIFT_MT103
+            - SWIFT_MT202
+            - SWIFT_PACS_008
+            - ACH_CREDIT
+            - ACH_DEBIT
+            - WIRE_TRANSFER
+            - UK_FPS
+            - UK_BACS
+            - UK_BACS_DIRECT_DEBIT
+            - UK_CHAPS
+            - UK_STANDING_ORDER
+            - TARGET2
+            - TIPS
+            - EBA_STEP2
+            - INTERNAL_TRANSFER
+            - INTERNAL_BULK_TRANSFER
+        amount:
+          type: number
+          description: Payment amount
+          example: 100.5
+        currency:
+          type: string
+          description: Payment currency (ISO 4217 code)
+          example: EUR
+        requestedExecutionDate:
+          type: string
+          description: Requested execution date
+          format: date
+          example: '2023-12-31'
+        endToEndId:
+          type: string
+          description: End-to-end identifier for payment tracking
+          example: E2E-REF-12345
+        reference:
+          type: string
+          description: Payment reference/description
+          example: 'Invoice payment #12345'
+        preferredProvider:
+          type: string
+          description: Preferred payment provider
+          example: TREEZOR
+          enum:
+            - SEPA_PROVIDER
+            - SWIFT_PROVIDER
+            - ACH_PROVIDER
+            - UK_PROVIDER
+            - TARGET2_PROVIDER
+            - TIPS_PROVIDER
+            - EBA_STEP2_PROVIDER
+            - INTERNAL_PROVIDER
+            - CARD_PROVIDER
+            - DEFAULT_PROVIDER
+        sca:
+          $ref: '#/components/schemas/ScaDTO'
+        simulationReference:
+          type: string
+          description: Reference to a previous simulation, used to link execute/schedule/cancel operations with a simulation
+          example: SIM-12345678
+        debtor:
+          $ref: '#/components/schemas/PartyInfoDTO'
+        debtorAccount:
+          $ref: '#/components/schemas/AccountInfoDTO'
+        creditor:
+          $ref: '#/components/schemas/PartyInfoDTO'
+        creditorAccount:
+          $ref: '#/components/schemas/AccountInfoDTO'
+        remittanceInformation:
+          maxLength: 140
+          minLength: 0
+          type: string
+          description: Remittance information / payment details
+          example: Invoice 12345
+        categoryPurpose:
+          type: string
+          description: Category purpose code (ISO 20022)
+          example: SALA
+        chargeBearer:
+          type: string
+          description: Charge bearer (DEBT, CRED, SHAR, SLEV)
+          example: SLEV
+        batchBooking:
+          type: boolean
+          description: Batch booking flag (true for batch booking)
+          example: false
+        instructionPriority:
+          type: string
+          description: Instruction priority (NORM, HIGH)
+          example: NORM
+        serviceLevel:
+          type: string
+          description: Service level code (ISO 20022)
+          example: SEPA
+        localInstrument:
+          type: string
+          description: Local instrument code (ISO 20022)
+          example: INST
+      description: SEPA payment request
+    SepaScheduleRequestDTO:
+      required:
+        - executionDate
+        - paymentRequest
+      type: object
+      properties:
+        paymentRequest:
+          $ref: '#/components/schemas/SepaPaymentRequestDTO'
+        executionDate:
+          type: string
+          description: Date when the payment should be executed
+          format: date
+          example: '2023-12-31'
+        executionTime:
+          $ref: '#/components/schemas/LocalTime'
+        recurrencePattern:
+          type: string
+          description: Recurrence pattern (CRON expression)
+          example: 0 0 1 1 * ?
+        recurrenceEndDate:
+          type: string
+          description: End date for recurring payments
+          format: date
+          example: '2024-12-31'
+        maxRecurrences:
+          type: integer
+          description: Maximum number of recurrences
+          format: int32
+          example: 12
+        description:
+          type: string
+          description: Description of the schedule
+          example: Monthly salary payment
+        preferredProvider:
+          type: string
+          description: Preferred payment provider
+          example: TREEZOR
+          enum:
+            - SEPA_PROVIDER
+            - SWIFT_PROVIDER
+            - ACH_PROVIDER
+            - UK_PROVIDER
+            - TARGET2_PROVIDER
+            - TIPS_PROVIDER
+            - EBA_STEP2_PROVIDER
+            - INTERNAL_PROVIDER
+            - CARD_PROVIDER
+            - DEFAULT_PROVIDER
+        modifiable:
+          type: boolean
+          description: Flag indicating if the schedule can be modified after creation
+        cancellable:
+          type: boolean
+          description: Flag indicating if the schedule can be cancelled after creation
+      description: SEPA schedule request
+    SepaCancellationRequestDTO:
+      required:
+        - paymentId
+        - paymentType
+      type: object
+      properties:
+        paymentId:
+          type: string
+          description: ID of the payment to cancel
+          example: PAY-123456789
+        paymentType:
+          type: string
+          description: Type of payment
+          enum:
+            - SEPA_SCT
+            - SEPA_ICT
+            - SEPA_SDD
+            - SEPA_SDD_CORE
+            - SEPA_SDD_B2B
+            - SEPA_SCT_INST
+            - SEPA_SDD_RECURRENT
+            - SEPA_SDD_ONE_OFF
+            - SEPA_SCT_FUTURE_DATED
+            - SEPA_SCT_STANDING_ORDER
+            - SWIFT_MT103
+            - SWIFT_MT202
+            - SWIFT_PACS_008
+            - ACH_CREDIT
+            - ACH_DEBIT
+            - WIRE_TRANSFER
+            - UK_FPS
+            - UK_BACS
+            - UK_BACS_DIRECT_DEBIT
+            - UK_CHAPS
+            - UK_STANDING_ORDER
+            - TARGET2
+            - TIPS
+            - EBA_STEP2
+            - INTERNAL_TRANSFER
+            - INTERNAL_BULK_TRANSFER
+        endToEndId:
+          type: string
+          description: Original end-to-end ID of the payment
+          example: E2E-REF-12345
+        cancellationReason:
+          type: string
+          description: Reason for cancellation
+          example: DUPL
+        additionalInformation:
+          type: string
+          description: Additional information about the cancellation
+          example: Duplicate payment
+        preferredProvider:
+          type: string
+          description: Preferred payment provider
+          example: TREEZOR
+          enum:
+            - SEPA_PROVIDER
+            - SWIFT_PROVIDER
+            - ACH_PROVIDER
+            - UK_PROVIDER
+            - TARGET2_PROVIDER
+            - TIPS_PROVIDER
+            - EBA_STEP2_PROVIDER
+            - INTERNAL_PROVIDER
+            - CARD_PROVIDER
+            - DEFAULT_PROVIDER
+        originalTransactionReference:
+          type: string
+          description: Original transaction reference
+          example: TRN-123456789
+        acceptPartialCancellation:
+          type: boolean
+          description: Flag indicating if a partial cancellation is acceptable
+        sca:
+          $ref: '#/components/schemas/ScaDTO'
+        simulationReference:
+          type: string
+          description: Reference to a previous simulation, used to link the cancellation with a simulation
+          example: SIM-12345678
+      description: SEPA cancellation request
+    InternalTransferRequestDTO:
+      required:
+        - amount
+        - currency
+        - description
+        - destinationAccount
+        - paymentType
+        - sourceAccount
+      type: object
+      properties:
+        requestId:
+          type: string
+          description: Unique identifier for the payment request
+          example: PAY-123456789
+        paymentType:
+          type: string
+          description: Type of payment
+          enum:
+            - SEPA_SCT
+            - SEPA_ICT
+            - SEPA_SDD
+            - SEPA_SDD_CORE
+            - SEPA_SDD_B2B
+            - SEPA_SCT_INST
+            - SEPA_SDD_RECURRENT
+            - SEPA_SDD_ONE_OFF
+            - SEPA_SCT_FUTURE_DATED
+            - SEPA_SCT_STANDING_ORDER
+            - SWIFT_MT103
+            - SWIFT_MT202
+            - SWIFT_PACS_008
+            - ACH_CREDIT
+            - ACH_DEBIT
+            - WIRE_TRANSFER
+            - UK_FPS
+            - UK_BACS
+            - UK_BACS_DIRECT_DEBIT
+            - UK_CHAPS
+            - UK_STANDING_ORDER
+            - TARGET2
+            - TIPS
+            - EBA_STEP2
+            - INTERNAL_TRANSFER
+            - INTERNAL_BULK_TRANSFER
+        amount:
+          type: number
+          description: Payment amount
+          example: 100.5
+        currency:
+          type: string
+          description: Payment currency (ISO 4217 code)
+          example: EUR
+        requestedExecutionDate:
+          type: string
+          description: Requested execution date
+          format: date
+          example: '2023-12-31'
+        endToEndId:
+          type: string
+          description: End-to-end identifier for payment tracking
+          example: E2E-REF-12345
+        reference:
+          type: string
+          description: Payment reference/description
+          example: 'Invoice payment #12345'
+        preferredProvider:
+          type: string
+          description: Preferred payment provider
+          example: TREEZOR
+          enum:
+            - SEPA_PROVIDER
+            - SWIFT_PROVIDER
+            - ACH_PROVIDER
+            - UK_PROVIDER
+            - TARGET2_PROVIDER
+            - TIPS_PROVIDER
+            - EBA_STEP2_PROVIDER
+            - INTERNAL_PROVIDER
+            - CARD_PROVIDER
+            - DEFAULT_PROVIDER
+        sca:
+          $ref: '#/components/schemas/ScaDTO'
+        simulationReference:
+          type: string
+          description: Reference to a previous simulation, used to link execute/schedule/cancel operations with a simulation
+          example: SIM-12345678
+        sourceAccount:
+          $ref: '#/components/schemas/AccountInfoDTO'
+        destinationAccount:
+          $ref: '#/components/schemas/AccountInfoDTO'
+        sourceAccountOwner:
+          $ref: '#/components/schemas/PartyInfoDTO'
+        destinationAccountOwner:
+          $ref: '#/components/schemas/PartyInfoDTO'
+        description:
+          maxLength: 140
+          minLength: 0
+          type: string
+          description: Description of the transfer
+          example: Monthly rent payment
+        category:
+          type: string
+          description: Category of the transfer
+          example: RENT
+        recurring:
+          type: boolean
+          description: Flag indicating if this is a recurring transfer
+        recurringFrequency:
+          type: string
+          description: Frequency of recurring transfer (e.g., DAILY, WEEKLY, MONTHLY)
+        notifyDestination:
+          type: boolean
+          description: Flag indicating if notification should be sent to the destination account owner
+        batchTransfer:
+          type: boolean
+          description: Flag indicating if this transfer is part of a batch operation
+        batchId:
+          type: string
+          description: Batch ID if this transfer is part of a batch operation
+      description: Internal transfer request
+    InternalTransferCancellationRequestDTO:
+      required:
+        - paymentId
+        - paymentType
+      type: object
+      properties:
+        paymentId:
+          type: string
+          description: ID of the payment to cancel
+          example: INT-12345678
+        paymentType:
+          type: string
+          description: Type of payment
+          example: INTERNAL_TRANSFER
+          enum:
+            - SEPA_SCT
+            - SEPA_ICT
+            - SEPA_SDD
+            - SEPA_SDD_CORE
+            - SEPA_SDD_B2B
+            - SEPA_SCT_INST
+            - SEPA_SDD_RECURRENT
+            - SEPA_SDD_ONE_OFF
+            - SEPA_SCT_FUTURE_DATED
+            - SEPA_SCT_STANDING_ORDER
+            - SWIFT_MT103
+            - SWIFT_MT202
+            - SWIFT_PACS_008
+            - ACH_CREDIT
+            - ACH_DEBIT
+            - WIRE_TRANSFER
+            - UK_FPS
+            - UK_BACS
+            - UK_BACS_DIRECT_DEBIT
+            - UK_CHAPS
+            - UK_STANDING_ORDER
+            - TARGET2
+            - TIPS
+            - EBA_STEP2
+            - INTERNAL_TRANSFER
+            - INTERNAL_BULK_TRANSFER
+        sourceAccountId:
+          type: string
+          description: Source account ID
+          example: ACC-12345678
+        destinationAccountId:
+          type: string
+          description: Destination account ID
+          example: ACC-87654321
+        cancellationReason:
+          type: string
+          description: Reason for cancellation
+          example: Customer request
+        additionalInformation:
+          type: string
+          description: Additional information about the cancellation
+          example: Payment no longer needed
+        preferredProvider:
+          type: string
+          description: Preferred payment provider
+          example: INTERNAL_PROVIDER
+          enum:
+            - SEPA_PROVIDER
+            - SWIFT_PROVIDER
+            - ACH_PROVIDER
+            - UK_PROVIDER
+            - TARGET2_PROVIDER
+            - TIPS_PROVIDER
+            - EBA_STEP2_PROVIDER
+            - INTERNAL_PROVIDER
+            - CARD_PROVIDER
+            - DEFAULT_PROVIDER
+        originalTransactionReference:
+          type: string
+          description: Original transaction reference
+          example: TRN-12345678
+        acceptPartialCancellation:
+          type: boolean
+          description: Flag indicating if a partial cancellation is acceptable
+        sca:
+          $ref: '#/components/schemas/ScaDTO'
+        simulationReference:
+          type: string
+          description: Reference to a previous simulation, used to link the cancellation with a simulation
+          example: SIM-12345678
+      description: Request for cancelling an internal transfer
+    TipsPaymentRequestDTO:
+      required:
+        - amount
+        - creditor
+        - creditorAccount
+        - currency
+        - debtor
+        - debtorAccount
+        - paymentType
+        - remittanceInformation
+      type: object
+      properties:
+        requestId:
+          type: string
+          description: Unique identifier for the payment request
+          example: PAY-123456789
+        paymentType:
+          type: string
+          description: Type of payment
+          enum:
+            - SEPA_SCT
+            - SEPA_ICT
+            - SEPA_SDD
+            - SEPA_SDD_CORE
+            - SEPA_SDD_B2B
+            - SEPA_SCT_INST
+            - SEPA_SDD_RECURRENT
+            - SEPA_SDD_ONE_OFF
+            - SEPA_SCT_FUTURE_DATED
+            - SEPA_SCT_STANDING_ORDER
+            - SWIFT_MT103
+            - SWIFT_MT202
+            - SWIFT_PACS_008
+            - ACH_CREDIT
+            - ACH_DEBIT
+            - WIRE_TRANSFER
+            - UK_FPS
+            - UK_BACS
+            - UK_BACS_DIRECT_DEBIT
+            - UK_CHAPS
+            - UK_STANDING_ORDER
+            - TARGET2
+            - TIPS
+            - EBA_STEP2
+            - INTERNAL_TRANSFER
+            - INTERNAL_BULK_TRANSFER
+        amount:
+          type: number
+          description: Payment amount
+          example: 100.5
+        currency:
+          type: string
+          description: Payment currency (ISO 4217 code)
+          example: EUR
+        requestedExecutionDate:
+          type: string
+          description: Requested execution date
+          format: date
+          example: '2023-12-31'
+        endToEndId:
+          type: string
+          description: End-to-end identification
+          example: E2E-12345
+        reference:
+          type: string
+          description: Payment reference/description
+          example: 'Invoice payment #12345'
+        preferredProvider:
+          type: string
+          description: Preferred payment provider
+          example: TREEZOR
+          enum:
+            - SEPA_PROVIDER
+            - SWIFT_PROVIDER
+            - ACH_PROVIDER
+            - UK_PROVIDER
+            - TARGET2_PROVIDER
+            - TIPS_PROVIDER
+            - EBA_STEP2_PROVIDER
+            - INTERNAL_PROVIDER
+            - CARD_PROVIDER
+            - DEFAULT_PROVIDER
+        sca:
+          $ref: '#/components/schemas/ScaDTO'
+        simulationReference:
+          type: string
+          description: Reference to a previous simulation, used to link execute/schedule/cancel operations with a simulation
+          example: SIM-12345678
+        debtor:
+          $ref: '#/components/schemas/PartyInfoDTO'
+        debtorAccount:
+          $ref: '#/components/schemas/AccountInfoDTO'
+        creditor:
+          $ref: '#/components/schemas/PartyInfoDTO'
+        creditorAccount:
+          $ref: '#/components/schemas/AccountInfoDTO'
+        remittanceInformation:
+          maxLength: 140
+          minLength: 0
+          type: string
+          description: Remittance information / payment details
+          example: Invoice 12345
+        maxExecutionTimeSeconds:
+          type: integer
+          description: Maximum execution time in seconds
+          format: int32
+          example: 20
+        beneficiaryNotificationRequired:
+          type: boolean
+          description: Beneficiary notification required
+          example: true
+        beneficiaryNotificationMethod:
+          type: string
+          description: Beneficiary notification method (SMS, EMAIL, PUSH)
+          example: SMS
+        beneficiaryNotificationContact:
+          type: string
+          description: Beneficiary notification contact
+          example: '+34600000000'
+        originatorNotificationRequired:
+          type: boolean
+          description: Originator notification required
+          example: true
+        originatorNotificationMethod:
+          type: string
+          description: Originator notification method (SMS, EMAIL, PUSH)
+          example: EMAIL
+        originatorNotificationContact:
+          type: string
+          description: Originator notification contact
+          example: originator@example.com
+        messageType:
+          type: string
+          description: TIPS message type (pacs.008, pacs.002, etc.)
+          example: pacs.008
+        serviceLevel:
+          type: string
+          description: TIPS service level
+          example: SEPA
+        clearingSystem:
+          type: string
+          description: TIPS clearing system
+          example: TIPS
+        memberIdentification:
+          type: string
+          description: TIPS member identification
+          example: DEUTDEFFXXX
+      description: TIPS (TARGET Instant Payment Settlement) payment request
+    TipsCancellationRequestDTO:
+      required:
+        - paymentId
+        - paymentType
+      type: object
+      properties:
+        paymentId:
+          type: string
+          description: ID of the payment to cancel
+          example: PAY-12345678
+        paymentType:
+          type: string
+          description: Type of payment
+          example: TIPS
+          enum:
+            - SEPA_SCT
+            - SEPA_ICT
+            - SEPA_SDD
+            - SEPA_SDD_CORE
+            - SEPA_SDD_B2B
+            - SEPA_SCT_INST
+            - SEPA_SDD_RECURRENT
+            - SEPA_SDD_ONE_OFF
+            - SEPA_SCT_FUTURE_DATED
+            - SEPA_SCT_STANDING_ORDER
+            - SWIFT_MT103
+            - SWIFT_MT202
+            - SWIFT_PACS_008
+            - ACH_CREDIT
+            - ACH_DEBIT
+            - WIRE_TRANSFER
+            - UK_FPS
+            - UK_BACS
+            - UK_BACS_DIRECT_DEBIT
+            - UK_CHAPS
+            - UK_STANDING_ORDER
+            - TARGET2
+            - TIPS
+            - EBA_STEP2
+            - INTERNAL_TRANSFER
+            - INTERNAL_BULK_TRANSFER
+        endToEndId:
+          type: string
+          description: Original end-to-end ID of the payment
+          example: E2E-12345678
+        uetr:
+          type: string
+          description: Original UETR (Unique End-to-end Transaction Reference)
+          example: 97ed4827-7b6f-4491-a06f-b548d5a7512d
+        cancellationReason:
+          type: string
+          description: Reason for cancellation
+          example: DUPL
+        additionalInformation:
+          type: string
+          description: Additional information about the cancellation
+          example: Duplicate payment
+        preferredProvider:
+          type: string
+          description: Preferred payment provider
+          example: TIPS_PROVIDER
+          enum:
+            - SEPA_PROVIDER
+            - SWIFT_PROVIDER
+            - ACH_PROVIDER
+            - UK_PROVIDER
+            - TARGET2_PROVIDER
+            - TIPS_PROVIDER
+            - EBA_STEP2_PROVIDER
+            - INTERNAL_PROVIDER
+            - CARD_PROVIDER
+            - DEFAULT_PROVIDER
+        originalTransactionReference:
+          type: string
+          description: Original transaction reference
+          example: TRN-12345678
+        acceptPartialCancellation:
+          type: boolean
+          description: Flag indicating if a partial cancellation is acceptable
+        sca:
+          $ref: '#/components/schemas/ScaDTO'
+        simulationReference:
+          type: string
+          description: Reference to a previous simulation, used to link the cancellation with a simulation
+          example: SIM-12345678
+      description: Request for cancelling a TIPS (TARGET Instant Payment Settlement) payment
+    Target2PaymentRequestDTO:
+      required:
+        - amount
+        - creditor
+        - creditorAccount
+        - currency
+        - debtor
+        - debtorAccount
+        - paymentType
+        - remittanceInformation
+      type: object
+      properties:
+        requestId:
+          type: string
+          description: Unique identifier for the payment request
+          example: PAY-123456789
+        paymentType:
+          type: string
+          description: Type of payment
+          enum:
+            - SEPA_SCT
+            - SEPA_ICT
+            - SEPA_SDD
+            - SEPA_SDD_CORE
+            - SEPA_SDD_B2B
+            - SEPA_SCT_INST
+            - SEPA_SDD_RECURRENT
+            - SEPA_SDD_ONE_OFF
+            - SEPA_SCT_FUTURE_DATED
+            - SEPA_SCT_STANDING_ORDER
+            - SWIFT_MT103
+            - SWIFT_MT202
+            - SWIFT_PACS_008
+            - ACH_CREDIT
+            - ACH_DEBIT
+            - WIRE_TRANSFER
+            - UK_FPS
+            - UK_BACS
+            - UK_BACS_DIRECT_DEBIT
+            - UK_CHAPS
+            - UK_STANDING_ORDER
+            - TARGET2
+            - TIPS
+            - EBA_STEP2
+            - INTERNAL_TRANSFER
+            - INTERNAL_BULK_TRANSFER
+        amount:
+          type: number
+          description: Payment amount
+          example: 100.5
+        currency:
+          type: string
+          description: Payment currency (ISO 4217 code)
+          example: EUR
+        requestedExecutionDate:
+          type: string
+          description: Requested execution date
+          format: date
+          example: '2023-12-31'
+        endToEndId:
+          type: string
+          description: End-to-end identification
+          example: E2E-12345
+        reference:
+          type: string
+          description: Payment reference/description
+          example: 'Invoice payment #12345'
+        preferredProvider:
+          type: string
+          description: Preferred payment provider
+          example: TREEZOR
+          enum:
+            - SEPA_PROVIDER
+            - SWIFT_PROVIDER
+            - ACH_PROVIDER
+            - UK_PROVIDER
+            - TARGET2_PROVIDER
+            - TIPS_PROVIDER
+            - EBA_STEP2_PROVIDER
+            - INTERNAL_PROVIDER
+            - CARD_PROVIDER
+            - DEFAULT_PROVIDER
+        sca:
+          $ref: '#/components/schemas/ScaDTO'
+        simulationReference:
+          type: string
+          description: Reference to a previous simulation, used to link execute/schedule/cancel operations with a simulation
+          example: SIM-12345678
+        debtor:
+          $ref: '#/components/schemas/PartyInfoDTO'
+        debtorAccount:
+          $ref: '#/components/schemas/AccountInfoDTO'
+        creditor:
+          $ref: '#/components/schemas/PartyInfoDTO'
+        creditorAccount:
+          $ref: '#/components/schemas/AccountInfoDTO'
+        remittanceInformation:
+          maxLength: 140
+          minLength: 0
+          type: string
+          description: Remittance information / payment details
+          example: Invoice 12345
+        regulatoryReporting:
+          type: string
+          description: Regulatory reporting information
+        chargeBearer:
+          type: string
+          description: Charge bearer (DEBT, CRED, SHAR)
+          example: SHAR
+        instructionPriority:
+          type: string
+          description: Instruction priority (NORM, HIGH, URGT)
+          example: URGT
+        settlementPriority:
+          type: string
+          description: Settlement priority (NORM, HIGH, URGT)
+          example: HIGH
+        settlementTimeIndication:
+          type: string
+          description: Settlement time indication (CLSTIME, TILTIME, REJTIME)
+          example: TILTIME
+        settlementTime:
+          type: string
+          description: Settlement time (HH:MM:SS+/-ZZ:ZZ)
+          example: 14:00:00+01:00
+        messageType:
+          type: string
+          description: TARGET2 message type (pacs.008, pacs.009, etc.)
+          example: pacs.008
+        serviceLevel:
+          type: string
+          description: TARGET2 service level
+          example: SEPA
+        clearingSystem:
+          type: string
+          description: TARGET2 clearing system
+          example: TGT
+        memberIdentification:
+          type: string
+          description: TARGET2 member identification
+          example: DEUTDEFFXXX
+      description: TARGET2 payment request
+    Target2CancellationRequestDTO:
+      required:
+        - paymentId
+        - paymentType
+      type: object
+      properties:
+        paymentId:
+          type: string
+          description: ID of the payment to cancel
+          example: PAY-12345678
+        paymentType:
+          type: string
+          description: Type of payment
+          example: TARGET2
+          enum:
+            - SEPA_SCT
+            - SEPA_ICT
+            - SEPA_SDD
+            - SEPA_SDD_CORE
+            - SEPA_SDD_B2B
+            - SEPA_SCT_INST
+            - SEPA_SDD_RECURRENT
+            - SEPA_SDD_ONE_OFF
+            - SEPA_SCT_FUTURE_DATED
+            - SEPA_SCT_STANDING_ORDER
+            - SWIFT_MT103
+            - SWIFT_MT202
+            - SWIFT_PACS_008
+            - ACH_CREDIT
+            - ACH_DEBIT
+            - WIRE_TRANSFER
+            - UK_FPS
+            - UK_BACS
+            - UK_BACS_DIRECT_DEBIT
+            - UK_CHAPS
+            - UK_STANDING_ORDER
+            - TARGET2
+            - TIPS
+            - EBA_STEP2
+            - INTERNAL_TRANSFER
+            - INTERNAL_BULK_TRANSFER
+        endToEndId:
+          type: string
+          description: Original end-to-end ID of the payment
+          example: E2E-12345678
+        uetr:
+          type: string
+          description: Original UETR (Unique End-to-end Transaction Reference)
+          example: 97ed4827-7b6f-4491-a06f-b548d5a7512d
+        cancellationReason:
+          type: string
+          description: Reason for cancellation
+          example: DUPL
+        additionalInformation:
+          type: string
+          description: Additional information about the cancellation
+          example: Duplicate payment
+        preferredProvider:
+          type: string
+          description: Preferred payment provider
+          example: TARGET2_PROVIDER
+          enum:
+            - SEPA_PROVIDER
+            - SWIFT_PROVIDER
+            - ACH_PROVIDER
+            - UK_PROVIDER
+            - TARGET2_PROVIDER
+            - TIPS_PROVIDER
+            - EBA_STEP2_PROVIDER
+            - INTERNAL_PROVIDER
+            - CARD_PROVIDER
+            - DEFAULT_PROVIDER
+        originalTransactionReference:
+          type: string
+          description: Original transaction reference
+          example: TRN-12345678
+        acceptPartialCancellation:
+          type: boolean
+          description: Flag indicating if a partial cancellation is acceptable
+        sca:
+          $ref: '#/components/schemas/ScaDTO'
+        simulationReference:
+          type: string
+          description: Reference to a previous simulation, used to link the cancellation with a simulation
+          example: SIM-12345678
+      description: Request for cancelling a TARGET2 payment
+    EbaStep2PaymentRequestDTO:
+      required:
+        - amount
+        - creditor
+        - creditorAccount
+        - currency
+        - debtor
+        - debtorAccount
+        - paymentType
+        - remittanceInformation
+      type: object
+      properties:
+        requestId:
+          type: string
+          description: Unique identifier for the payment request
+          example: PAY-123456789
+        paymentType:
+          type: string
+          description: Type of payment
+          enum:
+            - SEPA_SCT
+            - SEPA_ICT
+            - SEPA_SDD
+            - SEPA_SDD_CORE
+            - SEPA_SDD_B2B
+            - SEPA_SCT_INST
+            - SEPA_SDD_RECURRENT
+            - SEPA_SDD_ONE_OFF
+            - SEPA_SCT_FUTURE_DATED
+            - SEPA_SCT_STANDING_ORDER
+            - SWIFT_MT103
+            - SWIFT_MT202
+            - SWIFT_PACS_008
+            - ACH_CREDIT
+            - ACH_DEBIT
+            - WIRE_TRANSFER
+            - UK_FPS
+            - UK_BACS
+            - UK_BACS_DIRECT_DEBIT
+            - UK_CHAPS
+            - UK_STANDING_ORDER
+            - TARGET2
+            - TIPS
+            - EBA_STEP2
+            - INTERNAL_TRANSFER
+            - INTERNAL_BULK_TRANSFER
+        amount:
+          type: number
+          description: Payment amount
+          example: 100.5
+        currency:
+          type: string
+          description: Payment currency (ISO 4217 code)
+          example: EUR
+        requestedExecutionDate:
+          type: string
+          description: Requested execution date
+          format: date
+          example: '2023-12-31'
+        endToEndId:
+          type: string
+          description: End-to-end identification
+          example: E2E-12345
+        reference:
+          type: string
+          description: Payment reference/description
+          example: 'Invoice payment #12345'
+        preferredProvider:
+          type: string
+          description: Preferred payment provider
+          example: TREEZOR
+          enum:
+            - SEPA_PROVIDER
+            - SWIFT_PROVIDER
+            - ACH_PROVIDER
+            - UK_PROVIDER
+            - TARGET2_PROVIDER
+            - TIPS_PROVIDER
+            - EBA_STEP2_PROVIDER
+            - INTERNAL_PROVIDER
+            - CARD_PROVIDER
+            - DEFAULT_PROVIDER
+        sca:
+          $ref: '#/components/schemas/ScaDTO'
+        simulationReference:
+          type: string
+          description: Reference to a previous simulation, used to link execute/schedule/cancel operations with a simulation
+          example: SIM-12345678
+        debtor:
+          $ref: '#/components/schemas/PartyInfoDTO'
+        debtorAccount:
+          $ref: '#/components/schemas/AccountInfoDTO'
+        creditor:
+          $ref: '#/components/schemas/PartyInfoDTO'
+        creditorAccount:
+          $ref: '#/components/schemas/AccountInfoDTO'
+        remittanceInformation:
+          maxLength: 140
+          minLength: 0
+          type: string
+          description: Remittance information / payment details
+          example: Invoice 12345
+        regulatoryReporting:
+          type: string
+          description: Regulatory reporting information
+        chargeBearer:
+          type: string
+          description: Charge bearer (DEBT, CRED, SHAR, SLEV)
+          example: SLEV
+        instructionPriority:
+          type: string
+          description: Instruction priority (NORM, HIGH)
+          example: NORM
+        serviceLevel:
+          type: string
+          description: Service level code (ISO 20022)
+          example: SEPA
+        localInstrument:
+          type: string
+          description: Local instrument code (ISO 20022)
+          example: INST
+        categoryPurpose:
+          type: string
+          description: Category purpose code (ISO 20022)
+          example: SALA
+        step2Service:
+          type: string
+          description: STEP2 service (SCT, SDD Core, SDD B2B, etc.)
+          example: SCT
+        clearingCycle:
+          type: string
+          description: STEP2 clearing cycle
+          example: CYCLE1
+        memberIdentification:
+          type: string
+          description: STEP2 member identification
+          example: DEUTDEFFXXX
+      description: EBA STEP2 payment request
+    EbaStep2CancellationRequestDTO:
+      required:
+        - paymentId
+        - paymentType
+      type: object
+      properties:
+        paymentId:
+          type: string
+          description: ID of the payment to cancel
+          example: PAY-12345678
+        paymentType:
+          type: string
+          description: Type of payment
+          example: EBA_STEP2
+          enum:
+            - SEPA_SCT
+            - SEPA_ICT
+            - SEPA_SDD
+            - SEPA_SDD_CORE
+            - SEPA_SDD_B2B
+            - SEPA_SCT_INST
+            - SEPA_SDD_RECURRENT
+            - SEPA_SDD_ONE_OFF
+            - SEPA_SCT_FUTURE_DATED
+            - SEPA_SCT_STANDING_ORDER
+            - SWIFT_MT103
+            - SWIFT_MT202
+            - SWIFT_PACS_008
+            - ACH_CREDIT
+            - ACH_DEBIT
+            - WIRE_TRANSFER
+            - UK_FPS
+            - UK_BACS
+            - UK_BACS_DIRECT_DEBIT
+            - UK_CHAPS
+            - UK_STANDING_ORDER
+            - TARGET2
+            - TIPS
+            - EBA_STEP2
+            - INTERNAL_TRANSFER
+            - INTERNAL_BULK_TRANSFER
+        endToEndId:
+          type: string
+          description: Original end-to-end ID of the payment
+          example: E2E-12345678
+        cancellationReason:
+          type: string
+          description: Reason for cancellation
+          example: DUPL
+        additionalInformation:
+          type: string
+          description: Additional information about the cancellation
+          example: Duplicate payment
+        preferredProvider:
+          type: string
+          description: Preferred payment provider
+          example: EBA_STEP2_PROVIDER
+          enum:
+            - SEPA_PROVIDER
+            - SWIFT_PROVIDER
+            - ACH_PROVIDER
+            - UK_PROVIDER
+            - TARGET2_PROVIDER
+            - TIPS_PROVIDER
+            - EBA_STEP2_PROVIDER
+            - INTERNAL_PROVIDER
+            - CARD_PROVIDER
+            - DEFAULT_PROVIDER
+        originalTransactionReference:
+          type: string
+          description: Original transaction reference
+          example: TRN-12345678
+        acceptPartialCancellation:
+          type: boolean
+          description: Flag indicating if a partial cancellation is acceptable
+        sca:
+          $ref: '#/components/schemas/ScaDTO'
+        simulationReference:
+          type: string
+          description: Reference to a previous simulation, used to link the cancellation with a simulation
+          example: SIM-12345678
+      description: Request for cancelling an EBA STEP2 payment
+    AchTransferRequestDTO:
+      required:
+        - amount
+        - currency
+        - originator
+        - originatorAccount
+        - paymentType
+        - receiver
+        - receiverAccount
+        - receivingBankRoutingNumber
+        - remittanceInformation
+      type: object
+      properties:
+        requestId:
+          type: string
+          description: Unique identifier for the payment request
+          example: PAY-123456789
+        paymentType:
+          type: string
+          description: Type of payment
+          enum:
+            - SEPA_SCT
+            - SEPA_ICT
+            - SEPA_SDD
+            - SEPA_SDD_CORE
+            - SEPA_SDD_B2B
+            - SEPA_SCT_INST
+            - SEPA_SDD_RECURRENT
+            - SEPA_SDD_ONE_OFF
+            - SEPA_SCT_FUTURE_DATED
+            - SEPA_SCT_STANDING_ORDER
+            - SWIFT_MT103
+            - SWIFT_MT202
+            - SWIFT_PACS_008
+            - ACH_CREDIT
+            - ACH_DEBIT
+            - WIRE_TRANSFER
+            - UK_FPS
+            - UK_BACS
+            - UK_BACS_DIRECT_DEBIT
+            - UK_CHAPS
+            - UK_STANDING_ORDER
+            - TARGET2
+            - TIPS
+            - EBA_STEP2
+            - INTERNAL_TRANSFER
+            - INTERNAL_BULK_TRANSFER
+        amount:
+          type: number
+          description: Payment amount
+          example: 100.5
+        currency:
+          type: string
+          description: Payment currency (ISO 4217 code)
+          example: EUR
+        requestedExecutionDate:
+          type: string
+          description: Requested execution date
+          format: date
+          example: '2023-12-31'
+        endToEndId:
+          type: string
+          description: End-to-end identifier for payment tracking
+          example: E2E-REF-12345
+        reference:
+          type: string
+          description: Payment reference/description
+          example: 'Invoice payment #12345'
+        preferredProvider:
+          type: string
+          description: Preferred payment provider
+          example: TREEZOR
+          enum:
+            - SEPA_PROVIDER
+            - SWIFT_PROVIDER
+            - ACH_PROVIDER
+            - UK_PROVIDER
+            - TARGET2_PROVIDER
+            - TIPS_PROVIDER
+            - EBA_STEP2_PROVIDER
+            - INTERNAL_PROVIDER
+            - CARD_PROVIDER
+            - DEFAULT_PROVIDER
+        sca:
+          $ref: '#/components/schemas/ScaDTO'
+        simulationReference:
+          type: string
+          description: Reference to a previous simulation, used to link execute/schedule/cancel operations with a simulation
+          example: SIM-12345678
+        originator:
+          $ref: '#/components/schemas/PartyInfoDTO'
+        originatorAccount:
+          $ref: '#/components/schemas/AccountInfoDTO'
+        receiver:
+          $ref: '#/components/schemas/PartyInfoDTO'
+        receiverAccount:
+          $ref: '#/components/schemas/AccountInfoDTO'
+        receivingBankRoutingNumber:
+          pattern: ^\d{9}$
+          type: string
+          description: ABA routing number of the receiving financial institution
+          example: '021000021'
+        remittanceInformation:
+          maxLength: 140
+          minLength: 0
+          type: string
+          description: Remittance information / payment details
+          example: Invoice 12345
+        secCode:
+          type: string
+          description: SEC code (Standard Entry Class)
+          example: PPD
+        traceNumber:
+          type: string
+          description: Trace number
+          example: '12345678901234'
+        addendaRecordIndicator:
+          type: boolean
+          description: Addenda record indicator
+        addendaInformation:
+          type: string
+          description: Addenda information
+        discretionaryData:
+          type: string
+          description: Discretionary data
+          example: PAYROLL
+        batchNumber:
+          type: string
+          description: Batch number
+          example: '1234'
+      description: ACH payment request
+    AchCancellationRequestDTO:
+      required:
+        - paymentId
+        - paymentType
+      type: object
+      properties:
+        paymentId:
+          type: string
+          description: ID of the payment to cancel
+          example: ACH-12345678
+        paymentType:
+          type: string
+          description: Type of payment
+          enum:
+            - SEPA_SCT
+            - SEPA_ICT
+            - SEPA_SDD
+            - SEPA_SDD_CORE
+            - SEPA_SDD_B2B
+            - SEPA_SCT_INST
+            - SEPA_SDD_RECURRENT
+            - SEPA_SDD_ONE_OFF
+            - SEPA_SCT_FUTURE_DATED
+            - SEPA_SCT_STANDING_ORDER
+            - SWIFT_MT103
+            - SWIFT_MT202
+            - SWIFT_PACS_008
+            - ACH_CREDIT
+            - ACH_DEBIT
+            - WIRE_TRANSFER
+            - UK_FPS
+            - UK_BACS
+            - UK_BACS_DIRECT_DEBIT
+            - UK_CHAPS
+            - UK_STANDING_ORDER
+            - TARGET2
+            - TIPS
+            - EBA_STEP2
+            - INTERNAL_TRANSFER
+            - INTERNAL_BULK_TRANSFER
+        cancellationReason:
+          type: string
+          description: Reason for cancellation
+          example: Customer request
+        additionalInformation:
+          type: string
+          description: Additional information about the cancellation
+          example: Payment no longer needed
+        preferredProvider:
+          type: string
+          description: Preferred payment provider
+          example: ACH_PROVIDER
+          enum:
+            - SEPA_PROVIDER
+            - SWIFT_PROVIDER
+            - ACH_PROVIDER
+            - UK_PROVIDER
+            - TARGET2_PROVIDER
+            - TIPS_PROVIDER
+            - EBA_STEP2_PROVIDER
+            - INTERNAL_PROVIDER
+            - CARD_PROVIDER
+            - DEFAULT_PROVIDER
+        originalTransactionReference:
+          type: string
+          description: Original transaction reference
+          example: TRN-12345678
+        acceptPartialCancellation:
+          type: boolean
+          description: Flag indicating if a partial cancellation is acceptable
+        sca:
+          $ref: '#/components/schemas/ScaDTO'
+        simulationReference:
+          type: string
+          description: Reference to a previous simulation, used to link the cancellation with a simulation
+          example: SIM-12345678
+      description: ACH cancellation request

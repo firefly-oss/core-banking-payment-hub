@@ -15,6 +15,119 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <openapi-generator.version>7.0.1</openapi-generator.version>
+        <swagger-annotations.version>2.2.15</swagger-annotations.version>
+        <jackson.version>2.15.2</jackson.version>
+        <jakarta-annotation.version>2.1.1</jakarta-annotation.version>
+        <generated-sources-dir>${project.build.directory}/generated-sources</generated-sources-dir>
+        <jackson.databind.version>0.2.6</jackson.databind.version>
+        <jackson.dataformat.version>2.17.0</jackson.dataformat.version>
+        <javax.annotation.version>1.3.2</javax.annotation.version>
     </properties>
+
+    <dependencies>
+        <!-- Web module for OpenAPI spec -->
+        <dependency>
+            <groupId>com.firefly</groupId>
+            <artifactId>core-banking-payment-hub-web</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- OpenAPI Dependencies -->
+        <dependency>
+            <groupId>io.swagger.core.v3</groupId>
+            <artifactId>swagger-annotations</artifactId>
+            <version>${swagger-annotations.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>${jackson.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+            <version>${jackson.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.annotation</groupId>
+            <artifactId>jakarta.annotation-api</artifactId>
+            <version>${jakarta-annotation.version}</version>
+        </dependency>
+
+        <!-- Utils -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>logging-interceptor</artifactId>
+        </dependency>
+
+        <!-- For @Generated annotation -->
+        <dependency>
+            <groupId>javax.annotation</groupId>
+            <artifactId>javax.annotation-api</artifactId>
+            <version>${javax.annotation.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.openapitools</groupId>
+            <artifactId>jackson-databind-nullable</artifactId>
+            <version>${jackson.databind.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
+            <version>${jackson.dataformat.version}</version>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <plugins>
+
+            <!-- OpenAPI Generator Maven Plugin -->
+            <plugin>
+                <groupId>org.openapitools</groupId>
+                <artifactId>openapi-generator-maven-plugin</artifactId>
+                <version>${openapi-generator.version}</version>
+                <executions>
+                    <execution>
+                        <id>core-banking-payment-hub-sdk</id>
+                        <goals>
+                            <goal>generate</goal>
+                        </goals>
+                        <configuration>
+                            <!-- Use the OpenAPI spec from the running web application -->
+                            <inputSpec>${project.basedir}/src/main/resources/api-spec/openapi.yml</inputSpec>
+                            <generatorName>java</generatorName>
+                            <library>webclient</library>
+                            <output>${generated-sources-dir}</output>
+                            <apiPackage>com.firefly.core.banking.payments.hub.sdk.api</apiPackage>
+                            <modelPackage>com.firefly.core.banking.payments.hub.sdk.model</modelPackage>
+                            <invokerPackage>com.firefly.core.banking.payments.hub.sdk.invoker</invokerPackage>
+                            <configOptions>
+                                <java20>true</java20>
+                                <useTags>true</useTags>
+                                <dateLibrary>java8-localdatetime</dateLibrary>
+                                <sourceFolder>src/gen/java/main</sourceFolder>
+                                <library>webclient</library>
+                                <reactive>true</reactive>
+                                <returnResponse>true</returnResponse>
+                            </configOptions>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 
 </project>
