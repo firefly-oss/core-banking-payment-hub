@@ -7,7 +7,7 @@ info:
     email: dev@getfirefly.io
   version: 1.0.0
 servers:
-  - url: http://core.catalis.vc/payment-hub
+  - url: http://core.getfirefly.io/payment-hub
     description: Development Environment
   - url: /
     description: Local Development Environment
